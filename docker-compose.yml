@@ -1,0 +1,35 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?MYSQL_DATABASE is not set - copy .env.example to .env}
+      MYSQL_USER: ${MYSQL_USER:?MYSQL_USER is not set - copy .env.example to .env}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is not set - copy .env.example to .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is not set - copy .env.example to .env}
+    ports:
+      # Host 3307 avoids the pre-existing local MySQL service on host port 3306.
+      # Inside the Compose network the container still listens on 3306.
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    # Intentionally no host port: only other Compose services reach it at redis:6379.
+    # Used for rate limiting / security tracking; data is ephemeral by design.
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mysql-data:
