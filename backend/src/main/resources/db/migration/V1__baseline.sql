@@ -1,0 +1,3 @@
+-- Baseline migration placeholder.
+-- Real schema migrations (users, secrets, secret_shares, audit_log, ...) are
+-- added as V2, V3, ... in the database integration task.
