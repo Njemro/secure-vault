@@ -1,6 +1,15 @@
 spring:
   application:
     name: secure-vault-backend
+  datasource:
+    # MySQL container from docker-compose.yml (host port 3307 -> container 3306).
+    # Database name, username and password MUST come from environment variables;
+    # Spring Boot does not read .env automatically (see README / task notes).
+    # Automated tests override all datasource keys with in-memory H2 via the
+    # "test" profile (src/test/resources/application-test.yml).
+    url: jdbc:mysql://localhost:3307/${MYSQL_DATABASE}
+    username: ${MYSQL_USER}
+    password: ${MYSQL_PASSWORD}
   jpa:
     open-in-view: false
     hibernate:
