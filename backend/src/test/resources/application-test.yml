@@ -2,6 +2,13 @@
 # MySQL configuration arrives with the Docker infrastructure task.
 # Profile-specific file: adds to (does not replace) the main application.yml.
 spring:
+  # Force a blank issuer in tests so the fail-closed JwtDecoder is used and no
+  # live Keycloak instance or ambient issuer env var can affect test behavior.
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ""
   datasource:
     url: jdbc:h2:mem:securevault;DB_CLOSE_DELAY=-1
     driver-class-name: org.h2.Driver

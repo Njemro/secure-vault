@@ -16,6 +16,14 @@ spring:
       ddl-auto: validate
   flyway:
     enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Set via env var SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI.
+          # No realm/secret is hardcoded here. A blank default means no Keycloak
+          # is configured and JWT validation fails closed (rejects every token).
+          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:}
 
 server:
   port: 8081
