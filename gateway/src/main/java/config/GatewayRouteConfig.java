@@ -1,4 +1,4 @@
-package unibl.sni.securevault.gateway.config;
+package config;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.route.RouteLocator;
@@ -15,9 +15,18 @@ import org.springframework.context.annotation.Configuration;
  * {@code StripPrefix}/{@code RewritePath} filter - the backend serves its API
  * under {@code /api}.
  *
- * <p>Security controls (JWT validation, cookies/BFF sessions, Redis rate
- * limiting, CORS policy, Keycloak login) are intentionally not configured
- * here yet; they are added in later tasks.
+ * <p>The route applies one gateway filter: the Redis-backed
+ * {@code RequestRateLimiter}, keyed per client by
+ * {@link RemoteAddressKeyResolver} (remote socket address, never
+ * {@code X-Forwarded-For}). Limits are configured under
+ * {@code spring.cloud.gateway.server.webflux.redis-rate-limiter.config.api-backend}.
+ *
+ * <p>Note that Keycloak login traffic does <b>not</b> pass through this
+ * gateway, so this rate limiter does <b>not</b> protect login attempts.
+ *
+ * <p>Other security controls (JWT validation, cookies/BFF sessions, CORS
+ * policy) are intentionally not configured here yet; they are added in later
+ * tasks.
  */
 @Configuration
 public class GatewayRouteConfig {
@@ -25,10 +34,13 @@ public class GatewayRouteConfig {
     @Bean
     public RouteLocator secureVaultRouteLocator(
             RouteLocatorBuilder builder,
-            @Value("${gateway.routes.api.uri:http://localhost:8081}") String backendUri) {
+            @Value("${gateway.routes.api.uri:http://localhost:8081}") String backendUri,
+            RemoteAddressKeyResolver remoteAddressKeyResolver) {
         return builder.routes()
                 .route("api-backend", r -> r
                         .path("/api/**")
+                        .filters(f -> f.requestRateLimiter(
+                                cfg -> cfg.setKeyResolver(remoteAddressKeyResolver)))
                         .uri(backendUri))
                 .build();
     }

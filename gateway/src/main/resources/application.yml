@@ -2,6 +2,31 @@ spring:
   application:
     name: secure-vault-gateway
 
+  data:
+    redis:
+      # Redis holds the rate-limit counters for the gateway. In Compose the redis
+      # service is published on loopback only (127.0.0.1:6379) so the host-run
+      # gateway can reach it without exposing Redis beyond this machine.
+      # Override per environment via GATEWAY_REDIS_HOST / GATEWAY_REDIS_PORT.
+      host: ${GATEWAY_REDIS_HOST:localhost}
+      port: ${GATEWAY_REDIS_PORT:6379}
+
+  cloud:
+    gateway:
+      server:
+        webflux:
+          redis-rate-limiter:
+            # Per-route limits, keyed by the route id ("api-backend").
+            # ReplenishRate = tokens added per second; BurstCapacity = bucket size;
+            # RequestedTokens = cost of one request. Defaults are deliberately
+            # modest for local development and are overridden per environment via
+            # the GATEWAY_RATE_LIMIT_* environment variables.
+            config:
+              api-backend:
+                replenish-rate: ${GATEWAY_RATE_LIMIT_REPLENISH_RATE:10}
+                burst-capacity: ${GATEWAY_RATE_LIMIT_BURST_CAPACITY:20}
+                requested-tokens: ${GATEWAY_RATE_LIMIT_REQUESTED_TOKENS:1}
+
 server:
   # Edge entry point on 8000 (Keycloak owns 8080). The backend stays on 8081.
   port: 8000

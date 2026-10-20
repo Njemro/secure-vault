@@ -23,8 +23,12 @@ services:
   redis:
     image: redis:7.4-alpine
     restart: unless-stopped
-    # Intentionally no host port: only other Compose services reach it at redis:6379.
-    # Used for rate limiting / security tracking; data is ephemeral by design.
+    ports:
+      # Published on loopback only so the host-run gateway can reach Redis for
+      # rate limiting (127.0.0.1:6379). Bound to 127.0.0.1 so it is never exposed
+      # beyond this machine; other Compose services still reach it at redis:6379.
+      # Used for rate limiting / security tracking; data is ephemeral by design.
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
       interval: 10s

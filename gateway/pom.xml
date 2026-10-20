@@ -37,7 +37,7 @@
 
     <dependencies>
         <!-- Reactive API gateway. Brings Spring WebFlux + Reactor Netty.
-             Security, Redis and Keycloak are intentionally NOT added yet. -->
+             Security and Keycloak are intentionally NOT added yet. -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-gateway</artifactId>
@@ -47,6 +47,16 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
+        </dependency>
+
+        <!-- Redis-backed rate limiting (RequestRateLimiter + RedisRateLimiter).
+             GatewayRedisAutoConfiguration only defines the RedisRateLimiter bean
+             when a ReactiveRedisTemplate bean exists, so the reactive Redis
+             starter is required for rate limiting to be active. Version is
+             managed by the Boot parent BOM. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis-reactive</artifactId>
         </dependency>
     </dependencies>
 
