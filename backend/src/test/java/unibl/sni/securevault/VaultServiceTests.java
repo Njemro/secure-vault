@@ -33,6 +33,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -253,13 +254,14 @@ class VaultServiceTests {
     void auditEventAndHoneypotPersistOperations() {
         User u = newUser("min-1");
 
-        AuditLog saved = auditLogService.persist(new AuditLog(
-                u, "SVC_TEST_ACTION", "USER", u.getId().toString(), "{}",
-                new byte[32], new byte[32]));
+        AuditLog saved = auditLogService.record(u, "SVC_TEST_ACTION", "USER", u.getId().toString(), "{}");
         assertTrue(auditLogRepository.findById(saved.getId()).isPresent());
-        assertThrows(InvalidOperationRequestException.class, () -> auditLogService.persist(null));
-        assertThrows(InvalidOperationRequestException.class, () -> auditLogService.persist(
-                new AuditLog(u, " ", "USER", null, "{}", new byte[32], new byte[32])));
+        assertThrows(InvalidOperationRequestException.class,
+                () -> auditLogService.record(u, " ", "USER", null, "{}"));
+        assertThrows(InvalidOperationRequestException.class,
+                () -> auditLogService.record(u, "SVC_TEST_ACTION", " ", null, "{}"));
+        assertThrows(InvalidOperationRequestException.class,
+                () -> auditLogService.record(u, "SVC_TEST_ACTION", "USER", null, null));
 
         securityEventService.persist(new SecurityEvent(u, "SVC_EVENT_A", "10.9.9.1", "{}"));
         assertThrows(InvalidOperationRequestException.class, () -> securityEventService
@@ -286,6 +288,43 @@ class VaultServiceTests {
         List<Secret> ordinary = secretService.findByOwnerId(honeypotOwner.getId());
         assertEquals(1, ordinary.size());
         assertTrue(ordinary.stream().noneMatch(s -> "svc-decoy".equals(s.getName())));
+    }
+
+    @Test
+    void secretUpdateAndDeleteAreOwnerScoped() {
+        User owner = newUser("upd-1");
+        User other = newUser("upd-2");
+        Secret secret = newSecret(owner, "svc-secret-upd");
+
+        Secret updated = secretService.updateOwnedSecret(secret.getId(), owner.getId(),
+                "svc-secret-upd-renamed", "svc-description",
+                new byte[20], new byte[24], new byte[12], new byte[12], "AES-256-GCM");
+        assertEquals("svc-secret-upd-renamed", updated.getName());
+        assertNotNull(updated.getLastRotatedAt(), "replacing ciphertext counts as a rotation");
+        assertEquals("svc-secret-upd-renamed",
+                secretService.getOwnedSecret(secret.getId(), owner.getId()).getName());
+
+        // Non-owners cannot update or delete; unknown ids are missing resources.
+        assertThrows(InvalidOperationRequestException.class, () -> secretService.updateOwnedSecret(
+                secret.getId(), other.getId(), "x", null,
+                new byte[4], new byte[4], new byte[12], new byte[12], "AES-256-GCM"));
+        assertThrows(ResourceNotFoundException.class, () -> secretService.updateOwnedSecret(
+                UUID.randomUUID(), owner.getId(), "x", null,
+                new byte[4], new byte[4], new byte[12], new byte[12], "AES-256-GCM"));
+        assertThrows(InvalidOperationRequestException.class, () -> secretService.updateOwnedSecret(
+                secret.getId(), owner.getId(), " ", null,
+                new byte[4], new byte[4], new byte[12], new byte[12], "AES-256-GCM"));
+        assertThrows(InvalidOperationRequestException.class, () -> secretService.updateOwnedSecret(
+                secret.getId(), owner.getId(), "x", null,
+                new byte[0], new byte[4], new byte[12], new byte[12], "AES-256-GCM"));
+
+        assertThrows(InvalidOperationRequestException.class,
+                () -> secretService.deleteOwnedSecret(secret.getId(), other.getId()));
+        secretService.deleteOwnedSecret(secret.getId(), owner.getId());
+        assertTrue(secretService.findByOwnerId(owner.getId()).stream()
+                .noneMatch(s -> s.getId().equals(secret.getId())), "owned secret must be gone");
+        assertThrows(ResourceNotFoundException.class,
+                () -> secretService.deleteOwnedSecret(secret.getId(), owner.getId()));
     }
 }
 

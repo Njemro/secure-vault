@@ -112,13 +112,18 @@ class VaultRepositoryTests {
                     "events must be ordered newest first");
         }
 
-        auditLogRepository.save(new AuditLog(alice, "SECRET_CREATE", "SECRET", "{}", "{}",
+        AuditLog first = auditLogRepository.save(new AuditLog(alice, "SECRET_CREATE", "SECRET", "{}", "{}",
                 new byte[32], new byte[32]));
-        auditLogRepository.save(new AuditLog(bob, "LOGIN_SUCCESS", "USER", "{}", "{}",
+        AuditLog second = auditLogRepository.save(new AuditLog(bob, "LOGIN_SUCCESS", "USER", "{}", "{}",
                 new byte[32], new byte[32]));
 
         List<AuditLog> all = auditLogRepository.findAllByOrderByTimestampAsc();
-        assertEquals(2, all.size());
+        // Other test classes commit audit records through AuditLogService, so
+        // the table is not empty here: assert both inserted records are
+        // present and the whole result is ordered oldest first.
+        assertTrue(all.size() >= 2, "expected at least the two records inserted here");
+        assertTrue(all.stream().anyMatch(a -> a.getId().equals(first.getId())));
+        assertTrue(all.stream().anyMatch(a -> a.getId().equals(second.getId())));
         for (int i = 1; i < all.size(); i++) {
             assertFalse(all.get(i).getTimestamp().isBefore(all.get(i - 1).getTimestamp()),
                     "audit records must be ordered by timestamp ascending");

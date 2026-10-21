@@ -77,6 +77,49 @@ public class SecretService {
                 encryptedValue, encryptedDek, contentIv, dekIv, encryptionAlgorithm));
     }
 
+    /**
+     * Replaces an owned secret's metadata and ciphertext with fresh
+     * client-produced values - the backend never receives plaintext, the
+     * master password or an unwrapped DEK (AGENTS.md section 4). Ownership is
+     * enforced through {@link #getOwnedSecret(UUID, UUID)}.
+     */
+    @Transactional
+    public Secret updateOwnedSecret(UUID secretId, UUID requestingOwnerId, String name, String description,
+                                    byte[] encryptedValue, byte[] encryptedDek,
+                                    byte[] contentIv, byte[] dekIv, String encryptionAlgorithm) {
+        if (secretId == null || requestingOwnerId == null) {
+            throw new InvalidOperationRequestException("secretId and requestingOwnerId must not be null");
+        }
+        if (name == null || name.isBlank()) {
+            throw new InvalidOperationRequestException("name must not be blank");
+        }
+        if (encryptionAlgorithm == null || encryptionAlgorithm.isBlank()) {
+            throw new InvalidOperationRequestException("encryptionAlgorithm must not be blank");
+        }
+        requireNonEmpty(encryptedValue, "encryptedValue");
+        requireNonEmpty(encryptedDek, "encryptedDek");
+        requireNonEmpty(contentIv, "contentIv");
+        requireNonEmpty(dekIv, "dekIv");
+        Secret secret = getOwnedSecret(secretId, requestingOwnerId);
+        secret.updateEncryptedContent(name, description, encryptedValue, encryptedDek,
+                contentIv, dekIv, encryptionAlgorithm);
+        return secretRepository.save(secret);
+    }
+
+    /**
+     * Deletes an owned secret. Ownership is enforced through
+     * {@link #getOwnedSecret(UUID, UUID)}; deleting an unknown secret is
+     * reported as a missing resource, never silently ignored.
+     */
+    @Transactional
+    public void deleteOwnedSecret(UUID secretId, UUID requestingOwnerId) {
+        if (secretId == null || requestingOwnerId == null) {
+            throw new InvalidOperationRequestException("secretId and requestingOwnerId must not be null");
+        }
+        Secret secret = getOwnedSecret(secretId, requestingOwnerId);
+        secretRepository.delete(secret);
+    }
+
     private static void requireNonEmpty(byte[] value, String field) {
         if (value == null || value.length == 0) {
             throw new InvalidOperationRequestException(field + " must not be empty");
