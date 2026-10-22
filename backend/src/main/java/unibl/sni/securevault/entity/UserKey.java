@@ -80,20 +80,40 @@ public class UserKey {
         return publicKey;
     }
 
+    public void setPublicKey(byte[] publicKey) {
+        this.publicKey = publicKey;
+    }
+
     public byte[] getEncryptedPrivateKey() {
         return encryptedPrivateKey;
+    }
+
+    public void setEncryptedPrivateKey(byte[] encryptedPrivateKey) {
+        this.encryptedPrivateKey = encryptedPrivateKey;
     }
 
     public byte[] getPrivateKeyIv() {
         return privateKeyIv;
     }
 
+    public void setPrivateKeyIv(byte[] privateKeyIv) {
+        this.privateKeyIv = privateKeyIv;
+    }
+
     public String getKdfAlgorithm() {
         return kdfAlgorithm;
     }
 
+    public void setKdfAlgorithm(String kdfAlgorithm) {
+        this.kdfAlgorithm = kdfAlgorithm;
+    }
+
     public String getKdfParameters() {
         return kdfParameters;
+    }
+
+    public void setKdfParameters(String kdfParameters) {
+        this.kdfParameters = kdfParameters;
     }
 
     public LocalDateTime getCreatedAt() {

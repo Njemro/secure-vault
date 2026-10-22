@@ -13,15 +13,22 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import unibl.sni.securevault.dto.RecipientShareInput;
 import unibl.sni.securevault.dto.SecretCreateRequest;
 import unibl.sni.securevault.dto.SecretResponse;
+import unibl.sni.securevault.dto.SecretShareCreateRequest;
+import unibl.sni.securevault.dto.SecretShareResponse;
 import unibl.sni.securevault.dto.SecretUpdateRequest;
+import unibl.sni.securevault.dto.SharedSecretResponse;
+import unibl.sni.securevault.entity.Role;
 import unibl.sni.securevault.entity.Secret;
+import unibl.sni.securevault.entity.SecretShare;
 import unibl.sni.securevault.entity.User;
 import unibl.sni.securevault.exception.InvalidOperationRequestException;
 import unibl.sni.securevault.exception.ResourceNotFoundException;
 import unibl.sni.securevault.service.AuditLogService;
 import unibl.sni.securevault.service.SecretService;
+import unibl.sni.securevault.service.SecretShareService;
 import unibl.sni.securevault.service.UserService;
 
 import java.util.List;
@@ -52,12 +59,14 @@ public class SecretController {
 
     private final SecretService secretService;
     private final UserService userService;
+    private final SecretShareService secretShareService;
     private final AuditLogService auditLogService;
 
     public SecretController(SecretService secretService, UserService userService,
-                            AuditLogService auditLogService) {
+                            SecretShareService secretShareService, AuditLogService auditLogService) {
         this.secretService = secretService;
         this.userService = userService;
+        this.secretShareService = secretShareService;
         this.auditLogService = auditLogService;
     }
 
@@ -110,6 +119,85 @@ public class SecretController {
         return ResponseEntity.noContent().build();
     }
 
+    // ------------------------------------------------------------------
+    // Secret sharing (Team Lead owner shares with Developer recipients)
+    // ------------------------------------------------------------------
+
+    /**
+     * Shares a secret with one or more Developer recipients. Only the secret
+     * owner with role TEAM_LEAD may share. Each recipient's DEK is already
+     * wrapped client-side (RSA-OAEP with the recipient's public key); the
+     * backend performs no cryptography and never sees an unwrapped DEK.
+     * The secret's encrypted content, IV and owner-wrapped DEK are unchanged.
+     */
+    @PostMapping("/{id}/shares")
+    public ResponseEntity<List<SecretShareResponse>> shareSecret(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID id,
+            @Valid @RequestBody SecretShareCreateRequest request) {
+        User actor = requireCurrentUser(jwt);
+        if (actor.getRole() != Role.TEAM_LEAD) {
+            throw new InvalidOperationRequestException("Only team leads can share secrets");
+        }
+
+        List<UUID> recipientIds = request.recipients().stream()
+                .map(RecipientShareInput::recipientId).toList();
+        List<byte[]> encryptedDeks = request.recipients().stream()
+                .map(RecipientShareInput::encryptedDek).toList();
+
+        // Recipients must be Developers.
+        for (UUID recipientId : recipientIds) {
+            User recipient = userService.getById(recipientId);
+            if (recipient.getRole() != Role.DEVELOPER) {
+                throw new InvalidOperationRequestException(
+                        "Recipient must be a Developer: " + recipientId);
+            }
+        }
+
+        List<SecretShare> shares = secretShareService.createShares(
+                id, actor.getId(), recipientIds, encryptedDeks);
+
+        auditLogService.record(actor, "SECRET_SHARE", "SECRET", id.toString(),
+                "{\"recipientCount\":" + shares.size() + "}");
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(shares.stream().map(SecretController::toShareResponse).toList());
+    }
+
+    /**
+     * Lists secrets shared with the authenticated user as recipient. Returns
+     * ciphertext, IVs and the recipient-specific wrapped DEK for each shared
+     * secret. The original secret ciphertext, IV and owner-wrapped DEK are
+     * never modified by sharing.
+     */
+    @GetMapping("/shared")
+    public List<SharedSecretResponse> listSharedWithMe(@AuthenticationPrincipal Jwt jwt) {
+        User current = requireCurrentUser(jwt);
+        List<SecretShare> shares = secretShareService.findByRecipientIdWithSecretAndOwner(
+                current.getId());
+        List<SharedSecretResponse> responses = shares.stream()
+                .map(share -> toSharedSecretResponse(share, share.getEncryptedDek()))
+                .toList();
+        auditLogService.record(current, "SHARED_SECRET_LIST", "SECRET", null,
+                "{\"count\":" + responses.size() + "}");
+        return responses;
+    }
+
+    /**
+     * Returns one shared secret: its ciphertext, IVs and the DEK wrapped for
+     * the authenticated recipient. Only the recipient of the share may read it.
+     */
+    @GetMapping("/shared/{id}")
+    public SharedSecretResponse getSharedSecret(
+            @AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
+        User current = requireCurrentUser(jwt);
+        SecretShare share = secretShareService.findShareBySecretAndRecipient(id, current.getId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Shared secret not found: " + id));
+        auditLogService.record(current, "SHARED_SECRET_READ", "SECRET", id.toString(), "{}");
+        return toSharedSecretResponse(share, share.getEncryptedDek());
+    }
+
     /**
      * Maps the JWT subject (Keycloak {@code sub}) to the local user record.
      * A syntactically valid token for an unknown subject means the account is
@@ -136,5 +224,19 @@ public class SecretController {
                 secret.getEncryptedValue(), secret.getEncryptedDek(), secret.getContentIv(),
                 secret.getDekIv(), secret.getEncryptionAlgorithm(), secret.getCreatedAt(),
                 secret.getLastRotatedAt());
+    }
+
+    private static SecretShareResponse toShareResponse(SecretShare share) {
+        return new SecretShareResponse(share.getId(), share.getSecret().getId(),
+                share.getRecipient().getId(), share.getEncryptedDek(), share.getCreatedAt());
+    }
+
+    private static SharedSecretResponse toSharedSecretResponse(SecretShare share,
+                                                               byte[] recipientEncryptedDek) {
+        Secret secret = share.getSecret();
+        return new SharedSecretResponse(secret.getId(), secret.getOwner().getId(),
+                secret.getName(), secret.getDescription(), secret.getEncryptedValue(),
+                secret.getContentIv(), secret.getEncryptionAlgorithm(), secret.getCreatedAt(),
+                share.getId(), recipientEncryptedDek);
     }
 }

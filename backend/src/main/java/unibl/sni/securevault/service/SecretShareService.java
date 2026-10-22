@@ -15,6 +15,7 @@ import unibl.sni.securevault.repository.UserRepository;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -50,6 +51,22 @@ public class SecretShareService {
             throw new InvalidOperationRequestException("secretId must not be null");
         }
         return secretShareRepository.findBySecretId(secretId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<SecretShare> findByRecipientIdWithSecretAndOwner(UUID recipientId) {
+        if (recipientId == null) {
+            throw new InvalidOperationRequestException("recipientId must not be null");
+        }
+        return secretShareRepository.findByRecipientIdWithSecretAndOwner(recipientId);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<SecretShare> findShareBySecretAndRecipient(UUID secretId, UUID recipientId) {
+        if (secretId == null || recipientId == null) {
+            throw new InvalidOperationRequestException("secretId and recipientId must not be null");
+        }
+        return secretShareRepository.findBySecretIdAndRecipientId(secretId, recipientId);
     }
 
     /**
