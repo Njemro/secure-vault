@@ -31,5 +31,35 @@ services:
       timeout: 5s
       retries: 5
 
+  keycloak:
+    # Official Keycloak image, pinned like mysql/redis above.
+    image: quay.io/keycloak/keycloak:26.8
+    restart: unless-stopped
+    # Development mode: auto-configured dev-file (H2) database, no build step,
+    # HTTP on 8080. Production must use "start" with a real database and HTTPS.
+    command: start-dev
+    environment:
+      # Bootstrap administrator - read from .env, never hardcoded here.
+      # Copy .env.example to .env first.
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:?KC_BOOTSTRAP_ADMIN_USERNAME is not set - copy .env.example to .env}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?KC_BOOTSTRAP_ADMIN_PASSWORD is not set - copy .env.example to .env}
+      # Exposes /health/ready on the management interface (port 9000).
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      # Host 8080 is reserved for the project; bound to loopback so only this
+      # machine can reach the admin console during development.
+      - "127.0.0.1:8080:8080"
+    volumes:
+      # Persists Keycloak's dev-mode data (realms, clients, users) across restarts.
+      - keycloak-data:/opt/keycloak/data
+    healthcheck:
+      # The image ships only bash (no curl/wget), so probe via /dev/tcp.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: 127.0.0.1\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
 volumes:
   mysql-data:
+  keycloak-data:

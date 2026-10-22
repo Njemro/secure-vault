@@ -75,7 +75,7 @@ public class SecurityConfig {
      */
     @Bean
     JwtDecoder jwtDecoder(
-            @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri:}") String issuerUri) {
+            @Value("${KEYCLOAK_ISSUER_URI:}") String issuerUri) {
         if (issuerUri == null || issuerUri.isBlank()) {
             // Throw BadJwtException (a JwtException subclass): the resource
             // server maps it to InvalidBearerTokenException and a 401 - exactly
@@ -88,3 +88,4 @@ public class SecurityConfig {
         return JwtDecoders.fromIssuerLocation(issuerUri);
     }
 }
+
