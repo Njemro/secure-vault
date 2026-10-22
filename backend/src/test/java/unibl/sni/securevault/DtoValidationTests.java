@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import unibl.sni.securevault.dto.RecipientShareInput;
 import unibl.sni.securevault.dto.SecretCreateRequest;
 import unibl.sni.securevault.dto.SecretShareCreateRequest;
+import unibl.sni.securevault.dto.SecretUpdateRequest;
 import unibl.sni.securevault.dto.SecurityPolicyRequest;
 
 import java.util.List;
@@ -101,6 +102,43 @@ class DtoValidationTests {
 
         Set<ConstraintViolation<SecretCreateRequest>> blankAlgorithm =
                 validate(new SecretCreateRequest("api-key", null, new byte[16], new byte[16],
+                        new byte[12], new byte[12], " "));
+        assertTrue(hasViolationAt(blankAlgorithm, "encryptionAlgorithm"), describe(blankAlgorithm));
+    }
+
+    @Test
+    void secretUpdateRequestRequiresNameAndCiphertextFields() {
+        assertEquals(0, validate(new SecretUpdateRequest("api-key", "demo", new byte[16], new byte[16],
+                new byte[12], new byte[12], "AES-256-GCM")).size(),
+                "valid secret update must produce no violations");
+
+        // PUT semantics: description may be null, but name and crypto fields may not.
+        assertEquals(0, validate(new SecretUpdateRequest("api-key", null, new byte[16], new byte[16],
+                new byte[12], new byte[12], "AES-256-GCM")).size(),
+                "null description must be allowed on update");
+
+        Set<ConstraintViolation<SecretUpdateRequest>> blankName = validate(
+                new SecretUpdateRequest("  ", null, new byte[16], new byte[16],
+                        new byte[12], new byte[12], "AES-256-GCM"));
+        assertTrue(hasViolationAt(blankName, "name"), describe(blankName));
+
+        Set<ConstraintViolation<SecretUpdateRequest>> emptyContent = validate(
+                new SecretUpdateRequest("api-key", null, new byte[0], new byte[16],
+                        new byte[12], new byte[12], "AES-256-GCM"));
+        assertTrue(hasViolationAt(emptyContent, "encryptedValue"), describe(emptyContent));
+
+        Set<ConstraintViolation<SecretUpdateRequest>> nullDek = validate(
+                new SecretUpdateRequest("api-key", null, new byte[16], null,
+                        new byte[12], new byte[12], "AES-256-GCM"));
+        assertTrue(hasViolationAt(nullDek, "encryptedDek"), describe(nullDek));
+
+        Set<ConstraintViolation<SecretUpdateRequest>> nullContentIv = validate(
+                new SecretUpdateRequest("api-key", null, new byte[16], new byte[16],
+                        null, new byte[12], "AES-256-GCM"));
+        assertTrue(hasViolationAt(nullContentIv, "contentIv"), describe(nullContentIv));
+
+        Set<ConstraintViolation<SecretUpdateRequest>> blankAlgorithm = validate(
+                new SecretUpdateRequest("api-key", null, new byte[16], new byte[16],
                         new byte[12], new byte[12], " "));
         assertTrue(hasViolationAt(blankAlgorithm, "encryptionAlgorithm"), describe(blankAlgorithm));
     }

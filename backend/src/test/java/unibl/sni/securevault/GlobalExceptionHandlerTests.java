@@ -8,10 +8,13 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import unibl.sni.securevault.dto.ErrorResponse;
 import unibl.sni.securevault.exception.GlobalExceptionHandler;
 import unibl.sni.securevault.exception.InvalidOperationRequestException;
 import unibl.sni.securevault.exception.ResourceNotFoundException;
+
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -106,6 +109,25 @@ class GlobalExceptionHandlerTests {
         assertFalse(body.message().contains("password"),
                 "internal exception details must never be exposed");
         assertFalse(body.message().contains("jdbc"), "SQL/configuration must never be exposed");
+    }
+
+    @Test
+    void typeMismatchMapsTo400WithoutEchoingRejectedValue() {
+        MethodArgumentTypeMismatchException ex = new MethodArgumentTypeMismatchException(
+                "../../etc/passwd", UUID.class, "id", null, null);
+
+        ResponseEntity<ErrorResponse> response =
+                handler.handleTypeMismatch(ex, request("/api/secrets/not-a-uuid"));
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        ErrorResponse body = response.getBody();
+        assertNotNull(body);
+        assertEquals(400, body.status());
+        assertEquals("Bad Request", body.error());
+        assertTrue(body.message().contains("id"), body.message());
+        assertFalse(body.message().contains("passwd"),
+                "rejected path values must never be echoed back");
+        assertEquals("/api/secrets/not-a-uuid", body.path());
     }
 
     @Test

@@ -125,4 +125,24 @@ public class Secret {
     public LocalDateTime getLastRotatedAt() {
         return lastRotatedAt;
     }
+
+    /**
+     * Applies a full client-side re-encryption of this secret's content and
+     * wrapped DEK (PUT semantics). All values are opaque ciphertext and IVs
+     * produced in the browser; the backend never decrypts, unwraps or
+     * re-encrypts any of them (AGENTS.md section 4). Replacing the encrypted
+     * payload counts as a rotation, so {@code lastRotatedAt} is stamped.
+     */
+    public void updateEncryptedContent(String name, String description, byte[] encryptedValue,
+                                       byte[] encryptedDek, byte[] contentIv, byte[] dekIv,
+                                       String encryptionAlgorithm) {
+        this.name = name;
+        this.description = description;
+        this.encryptedValue = encryptedValue;
+        this.encryptedDek = encryptedDek;
+        this.contentIv = contentIv;
+        this.dekIv = dekIv;
+        this.encryptionAlgorithm = encryptionAlgorithm;
+        this.lastRotatedAt = LocalDateTime.now();
+    }
 }

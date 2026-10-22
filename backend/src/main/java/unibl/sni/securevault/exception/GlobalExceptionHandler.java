@@ -5,8 +5,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import unibl.sni.securevault.dto.ErrorResponse;
 
@@ -56,6 +58,33 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new ErrorResponse(LocalDateTime.now(), HttpStatus.BAD_REQUEST.value(),
                         HttpStatus.BAD_REQUEST.getReasonPhrase(), details, request.getRequestURI()));
+    }
+
+    /**
+     * A path or query parameter that cannot be converted to its target type
+     * (e.g. a non-UUID secret id). Only the parameter name is exposed - never
+     * the rejected value, which could carry arbitrary client input.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex,
+                                                            HttpServletRequest request) {
+        String message = "Parameter '" + ex.getName() + "' has an invalid format";
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse(LocalDateTime.now(), HttpStatus.BAD_REQUEST.value(),
+                        HttpStatus.BAD_REQUEST.getReasonPhrase(), message, request.getRequestURI()));
+    }
+
+    /**
+     * Malformed or unreadable JSON request bodies. Exception internals may
+     * echo payload fragments, so a fixed generic message is returned instead.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleNotReadable(HttpMessageNotReadableException ex,
+                                                           HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse(LocalDateTime.now(), HttpStatus.BAD_REQUEST.value(),
+                        HttpStatus.BAD_REQUEST.getReasonPhrase(),
+                        "Request body is malformed or unreadable", request.getRequestURI()));
     }
 
     /** Anything unhandled: generic message only, never exception internals. */

@@ -11,15 +11,20 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 /**
  * One record of the SHA-256 audit hash chain (AGENTS.md section 12).
- * Hash-chain calculation, writing and tamper detection are implemented in a
- * later task - this entity only stores the fields. metadata must contain
- * only safe values: never secrets, passwords, keys, tokens or private keys.
- * The schema alone does NOT make records immutable; immutability comes from
- * chain validation plus database protections.
+ * Hash-chain generation, ordering guarantees and tamper detection are
+ * implemented in {@link unibl.sni.securevault.service.AuditLogService}, the
+ * only production component that constructs records; it seals each record
+ * with {@link #sealRecordHash(byte[])} immediately after construction.
+ * metadata must contain only safe values: never secrets, encrypted contents,
+ * passwords, keys, tokens or private keys. The schema alone does NOT make
+ * records immutable; a database administrator able to rewrite the whole
+ * chain remains outside what this design can defend against (documented in
+ * AuditLogService).
  */
 @Entity
 @Table(name = "audit_logs")
@@ -30,7 +35,11 @@ public class AuditLog {
     @Column(length = 36, updatable = false)
     private UUID id;
 
-    /** Event timestamp (column name "event_time" avoids the TIMESTAMP keyword). */
+    /**
+     * Event timestamp (column name "event_time" avoids the TIMESTAMP keyword).
+     * Truncated to microseconds so the DATETIME(6) column stores it unchanged;
+     * the record hash is computed over this value and must survive round-trips.
+     */
     @Column(name = "event_time", nullable = false)
     private LocalDateTime timestamp;
 
@@ -52,7 +61,7 @@ public class AuditLog {
     @Column(nullable = false, length = 2000)
     private String metadata;
 
-    /** Hash of the previous chain record; the chain-writer task defines the genesis value. */
+    /** Hash of the previous chain record; 32 zero bytes (genesis) for the very first record. */
     @JdbcTypeCode(SqlTypes.VARBINARY)
     @Column(name = "previous_hash", nullable = false, length = 32)
     private byte[] previousHash;
@@ -67,7 +76,9 @@ public class AuditLog {
     public AuditLog(User actor, String action, String resourceType, String resourceId,
                     String metadata, byte[] previousHash, byte[] recordHash) {
         this.id = UUID.randomUUID();
-        this.timestamp = LocalDateTime.now();
+        // Microsecond truncation keeps the stored value byte-identical to the
+        // value the record hash is computed over (DATETIME(6) precision).
+        this.timestamp = LocalDateTime.now().truncatedTo(ChronoUnit.MICROS);
         this.actor = actor;
         this.action = action;
         this.resourceType = resourceType;
@@ -111,5 +122,30 @@ public class AuditLog {
 
     public byte[] getRecordHash() {
         return recordHash;
+    }
+
+    /**
+     * Seals this record with its computed SHA-256 hash. Called exactly once by
+     * {@link unibl.sni.securevault.service.AuditLogService} right after
+     * construction, while the constructor's all-zero placeholder is still in
+     * place, so a stored record can never be re-hashed afterwards.
+     */
+    public void sealRecordHash(byte[] recordHash) {
+        if (recordHash == null || recordHash.length != 32) {
+            throw new IllegalArgumentException("recordHash must be exactly 32 bytes (SHA-256)");
+        }
+        if (this.recordHash == null || !isAllZero(this.recordHash)) {
+            throw new IllegalStateException("audit record hash has already been sealed");
+        }
+        this.recordHash = recordHash;
+    }
+
+    private static boolean isAllZero(byte[] bytes) {
+        for (byte b : bytes) {
+            if (b != 0) {
+                return false;
+            }
+        }
+        return true;
     }
 }
