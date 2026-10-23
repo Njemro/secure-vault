@@ -4,11 +4,13 @@ import Dashboard from './pages/Dashboard.jsx'
 import MySecrets from './pages/MySecrets.jsx'
 import SharedWithMe from './pages/SharedWithMe.jsx'
 import SecuritySettings from './pages/SecuritySettings.jsx'
+import Register from './pages/Register.jsx'
 import NotFound from './pages/NotFound.jsx'
 
 export default function App() {
   return (
     <Routes>
+      <Route path="register" element={<Register />} />
       <Route element={<AppLayout />}>
         <Route index element={<Dashboard />} />
         <Route path="my-secrets" element={<MySecrets />} />

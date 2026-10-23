@@ -13,9 +13,12 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
- * Application user. Authentication (passwords) and TOTP MFA are managed by
- * Keycloak - never stored here. The vault master password never leaves the
- * browser (AGENTS.md section 8).
+ * Application user. Authentication (passwords) and TOTP MFA secrets are managed
+ * by Keycloak / MfaCredential - never stored here in plaintext. The vault master
+ * password never leaves the browser (AGENTS.md section 8).
+ * <p>{@code mfaEnabled} records whether the user has completed TOTP enrollment
+ * and whether MFA is enforced at login. The actual TOTP secret lives in
+ * {@link MfaCredential}.
  */
 @Entity
 @Table(name = "users")
@@ -39,6 +42,9 @@ public class User {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 12)
     private UserStatus status;
+
+    @Column(name = "mfa_enabled", nullable = false)
+    private boolean mfaEnabled = false;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
@@ -73,6 +79,14 @@ public class User {
 
     public UserStatus getStatus() {
         return status;
+    }
+
+    public boolean isMfaEnabled() {
+        return mfaEnabled;
+    }
+
+    public void setMfaEnabled(boolean mfaEnabled) {
+        this.mfaEnabled = mfaEnabled;
     }
 
     public LocalDateTime getCreatedAt() {
