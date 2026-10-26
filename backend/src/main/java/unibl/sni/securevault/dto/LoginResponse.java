@@ -21,6 +21,7 @@ public record LoginResponse(
         UserStatus status,
         boolean mfaRequired,
         boolean mfaEnrolled,
+        UUID challengeId,
         LocalDateTime issuedAt
 ) {
 }

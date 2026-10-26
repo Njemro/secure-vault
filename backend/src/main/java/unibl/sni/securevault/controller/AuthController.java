@@ -3,8 +3,6 @@ package unibl.sni.securevault.controller;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -54,18 +52,23 @@ public class AuthController {
     /**
      * Second factor: verify a TOTP code and receive a full access token.
      * Only valid after a successful first-factor login that returned
-     * {@code mfaRequired = true}.
+     * {@code mfaRequired = true}. The client presents the challenge ID
+     * (received from login) as the Bearer token in the Authorization header
+     * or in the request body.
      */
     @PostMapping("/mfa/verify")
     public ResponseEntity<LoginResponse> verifyMfa(
             @RequestBody MfaVerifyRequest request,
             HttpServletRequest httpRequest) {
         String sourceIp = httpRequest.getRemoteAddr();
-        // The temporary token would normally be passed via a header or cookie.
-        // For simplicity, the client presents it as the "code" field is the
-        // TOTP code; the temp token is expected in the Authorization header.
-        String tempToken = extractTempToken(httpRequest);
-        LoginResponse response = authService.verifyMfa(tempToken, request.code(), sourceIp);
+        String challengeId = request.challengeId() != null ? request.challengeId().toString() : null;
+        if (challengeId == null) {
+            String authHeader = httpRequest.getHeader("Authorization");
+            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                challengeId = authHeader.substring(7);
+            }
+        }
+        LoginResponse response = authService.verifyMfa(challengeId, request.code(), sourceIp);
         return ResponseEntity.ok(response);
     }
 
@@ -74,12 +77,4 @@ public class AuthController {
      */
     // @GetMapping("/me") - temporarily disabled pending JWT principal resolver
     // public ResponseEntity<UserProfileResponse> me(@AuthenticationPrincipal Jwt jwt) { ... }
-
-    private String extractTempToken(HttpServletRequest request) {
-        String authHeader = request.getHeader("Authorization");
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            return authHeader.substring(7);
-        }
-        return null;
-    }
 }
