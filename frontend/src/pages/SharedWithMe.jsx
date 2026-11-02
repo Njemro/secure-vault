@@ -1,35 +1,42 @@
 import { useState, useEffect } from 'react'
 import PageHeader from '../components/PageHeader.jsx'
-import { useAuth } from '../context/AuthContext.jsx'
 import { listSharedSecrets } from '../services/secretsApi.js'
 
 export default function SharedWithMe() {
-  const { token } = useAuth()
   const [secrets, setSecrets] = useState([])
-  const [loading, setLoading] = useState(Boolean(token))
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    if (!token) {
-      const reset = () => {
-        setSecrets([])
-      }
-      reset()
-      return
-    }
-    const fetchData = async () => {
+    let cancelled = false
+
+    async function fetchData() {
       setLoading(true)
+      setError(null)
+
       try {
-        const data = await listSharedSecrets(token)
-        setSecrets(data || [])
+        const data = await listSharedSecrets()
+
+        if (!cancelled) {
+          setSecrets(data || [])
+        }
       } catch (err) {
-        setError(err.message || 'Failed to load shared secrets')
+        if (!cancelled) {
+          setError(err.message || 'Greška prilikom učitavanja podijeljenih tajni.')
+        }
       } finally {
-        setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+        }
       }
     }
+
     fetchData()
-  }, [token])
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   if (loading) {
     return (
@@ -75,6 +82,7 @@ export default function SharedWithMe() {
         title="Shared With Me"
         subtitle="Secrets other users have shared with you."
       />
+
       <ul className="list">
         {secrets.map((secret) => (
           <li key={secret.id} className="list__item">
@@ -82,9 +90,12 @@ export default function SharedWithMe() {
               <span className="list__name">{secret.name}</span>
               <span className="badge">shared</span>
             </div>
+
             <p className="list__meta">
-              {secret.description || 'No description'} &middot;
-              Shared {new Date(secret.createdAt).toLocaleDateString()}
+              {secret.description || 'No description'} &middot; Shared{' '}
+              {secret.createdAt
+                ? new Date(secret.createdAt).toLocaleDateString()
+                : 'Unknown'}
             </p>
           </li>
         ))}

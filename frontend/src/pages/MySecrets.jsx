@@ -1,94 +1,95 @@
 import { useState, useEffect } from 'react'
-import PageHeader from '../components/PageHeader.jsx'
-import { useAuth } from '../context/AuthContext.jsx'
+import { Link } from 'react-router-dom'
 import { listSecrets } from '../services/secretsApi.js'
 
 export default function MySecrets() {
-  const { token } = useAuth()
   const [secrets, setSecrets] = useState([])
-  const [loading, setLoading] = useState(Boolean(token))
-  const [error, setError] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!token) {
-      const reset = () => {
-        setSecrets([])
-      }
-      reset()
-      return
-    }
-    const fetchData = async () => {
+    let cancelled = false
+
+    async function fetchSecrets() {
       setLoading(true)
+      setError('')
+
       try {
-        const data = await listSecrets(token)
-        setSecrets(data || [])
+        const data = await listSecrets()
+
+        if (!cancelled) {
+          setSecrets(Array.isArray(data) ? data : [])
+        }
       } catch (err) {
-        setError(err.message || 'Failed to load secrets')
+        if (!cancelled) {
+          setError(err.message || 'Greška prilikom učitavanja tajni.')
+        }
       } finally {
-        setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+        }
       }
     }
-    fetchData()
-  }, [token])
+
+    fetchSecrets()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   if (loading) {
-    return (
-      <section>
-        <PageHeader
-          title="My Secrets"
-          subtitle="Secrets you own. Content is encrypted client-side."
-        />
-        <p>Loading your secrets...</p>
-      </section>
-    )
-  }
-
-  if (error) {
-    return (
-      <section>
-        <PageHeader
-          title="My Secrets"
-          subtitle="Secrets you own. Content is encrypted client-side."
-        />
-        <p className="form__error">{error}</p>
-      </section>
-    )
-  }
-
-  if (secrets.length === 0) {
-    return (
-      <section>
-        <PageHeader
-          title="My Secrets"
-          subtitle="Secrets you own. Content is encrypted client-side."
-        />
-        <div className="card">
-          <p>No secrets found. Create your first secret to get started.</p>
-        </div>
-      </section>
-    )
+    return <p>Učitavanje tajni...</p>
   }
 
   return (
-    <section>
-      <PageHeader
-        title="My Secrets"
-        subtitle="Secrets you own. Content is encrypted client-side."
-      />
-      <ul className="list">
-        {secrets.map((secret) => (
-          <li key={secret.id} className="list__item">
-            <div className="list__row">
-              <span className="list__name">{secret.name}</span>
-              <span className="badge">{secret.encryptionAlgorithm}</span>
-            </div>
-            <p className="list__meta">
-              {secret.description || 'No description'} &middot;
-              Created {new Date(secret.createdAt).toLocaleDateString()}
-            </p>
-          </li>
-        ))}
-      </ul>
-    </section>
+    <main className="secret-page">
+      <header>
+        <h1>Moje tajne</h1>
+        <Link to="/secrets/new">+ Nova tajna</Link>
+      </header>
+
+      {error && (
+        <p role="alert" style={{ color: 'red' }}>
+          {error}
+        </p>
+      )}
+
+      {!error && secrets.length === 0 && (
+        <section>
+          <p>Još uvijek nemaš sačuvanih tajni.</p>
+          <Link to="/secrets/new">Kreiraj prvu tajnu</Link>
+        </section>
+      )}
+
+      {secrets.length > 0 && (
+        <ul>
+          {secrets.map((secret) => (
+            <li key={secret.id}>
+              <Link to={`/secrets/${secret.id}`}>
+                <strong>{secret.name}</strong>
+
+                {secret.description && (
+                  <p>{secret.description}</p>
+                )}
+
+                <small>
+                  Algoritam: {secret.encryptionAlgorithm || 'Nije naveden'}
+                </small>
+
+                <br />
+
+                <small>
+                  Kreirano:{' '}
+                  {secret.createdAt
+                    ? new Date(secret.createdAt).toLocaleString()
+                    : 'Nepoznato'}
+                </small>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </main>
   )
 }

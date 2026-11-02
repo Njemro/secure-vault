@@ -1,123 +1,439 @@
-import { createContext, useContext, useState, useCallback } from 'react'
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+} from 'react'
+
+import { useAuth } from './AuthContext.jsx'
+import { getMyKeys } from '../services/usersApi.js'
+
 import {
   deriveKek,
-  generateSalt,
   generateDek,
   encryptBytes,
   decryptBytes,
   wrapDek,
   unwrapDek,
-  bytesToBase64,
+  decryptPrivateKey,
+  importPrivateKeyPkcs8,
+  unwrapDekForRecipient as cryptoUnwrapDekForRecipient,
+  importPublicKeySpki,
+  wrapDekForRecipient as cryptoWrapDekForRecipient,
   base64ToBytes,
-  PBKDF2_DEFAULT_ITERATIONS,
+  bytesToBase64,
 } from '../crypto/index.js'
 
 const VaultContext = createContext(null)
 
-/**
- * Vault context: manages the master password and derived KEK in memory.
- *
- * The master password never leaves the browser. It is held in memory only
- * for the duration of the session and is used to derive the KEK that wraps
- * each secret's DEK.
- */
 export function VaultProvider({ children }) {
-  const [masterPassword, setMasterPassword] = useState(null)
+  const { authenticated } = useAuth()
+
   const [kek, setKek] = useState(null)
-  const [salt, setSalt] = useState(null)
-  const [kdfParameters, setKdfParameters] = useState(null)
+  const [privateKey, setPrivateKey] = useState(null)
+  const [publicKey, setPublicKey] = useState(null)
+  const [vaultKeys, setVaultKeys] = useState(null)
+
   const [unlocked, setUnlocked] = useState(false)
+  const [loading, setLoading] = useState(false)
 
-  const unlock = useCallback(async (password) => {
-    const derivedSalt = generateSalt()
-    const derivedKek = await deriveKek(password, derivedSalt, PBKDF2_DEFAULT_ITERATIONS)
-    setMasterPassword(password)
-    setSalt(derivedSalt)
-    setKek(derivedKek)
-    setUnlocked(true)
-    return { salt: derivedSalt, kek: derivedKek }
-  }, [])
+  const [status, setStatus] = useState('checking')
+  const [error, setError] = useState(null)
 
-  const lock = useCallback(() => {
-    setMasterPassword(null)
-    setSalt(null)
-    setKdfParameters(null)
+  const statusRequestId = useRef(0)
+
+  // Briše ključeve iz memorije aplikacije.
+  const clearVault = useCallback(() => {
     setKek(null)
+    setPrivateKey(null)
+    setPublicKey(null)
+    setVaultKeys(null)
     setUnlocked(false)
   }, [])
 
-  // Encrypt a secret value: generate DEK, encrypt value with DEK, wrap DEK with KEK.
+  // Briše samo materijal za otključavanje, a čuva podatke o trezoru.
+  const clearUnlockedMaterial = useCallback(() => {
+    setKek(null)
+    setPrivateKey(null)
+    setUnlocked(false)
+  }, [])
+
+  /**
+   * Provjera da li korisnik ima registrovane ključeve.
+   */
+  const refreshVaultStatus = useCallback(async () => {
+    const requestId = ++statusRequestId.current
+
+    if (!authenticated) {
+      clearVault()
+      setError(null)
+      setStatus('checking')
+      return 'checking'
+    }
+
+
+
+    try {
+      const keys = await getMyKeys()
+
+      if (requestId !== statusRequestId.current) {
+        return null
+      }
+
+      if (
+        !keys?.encryptedPrivateKey ||
+        !keys?.privateKeyIv ||
+        !keys?.kdfParameters
+      ) {
+        clearVault()
+        setStatus('needs-setup')
+        return 'needs-setup'
+      }
+
+      clearUnlockedMaterial()
+      setVaultKeys(keys)
+      setPublicKey(keys.publicKey || null)
+      setStatus('locked')
+
+      return 'locked'
+    } catch (err) {
+      if (requestId !== statusRequestId.current) {
+        return null
+      }
+
+      if (err.status === 404) {
+        clearVault()
+        setStatus('needs-setup')
+        return 'needs-setup'
+      }
+
+      console.error('Vault status check failed:', err)
+
+      setError(
+        err.message || 'Nije moguće provjeriti stanje trezora.',
+      )
+
+      setStatus('error')
+      return 'error'
+    }
+  }, [authenticated, clearVault, clearUnlockedMaterial])
+
+  /**
+   * Poziva se nakon uspješne registracije ključeva.
+   */
+  const completeVaultSetup = useCallback((keys) => {
+    statusRequestId.current += 1
+
+    clearVault()
+
+    setPublicKey(keys?.publicKey || null)
+    setVaultKeys(keys || null)
+    setError(null)
+    setStatus('locked')
+  }, [clearVault])
+
+  /**
+   * Otključavanje trezora.
+   */
+  const unlock = useCallback(async (masterPassword) => {
+    if (!masterPassword) {
+      throw new Error('Unesi master lozinku.')
+    }
+
+    if (!authenticated) {
+      throw new Error('Nisi prijavljen.')
+    }
+
+    const requestId = ++statusRequestId.current
+
+    setLoading(true)
+    setError(null)
+
+    try {
+      const keys = await getMyKeys()
+
+      if (requestId !== statusRequestId.current) {
+        throw new Error('Zahtjev za otključavanje je poništen.')
+      }
+
+      setStatus('checking')
+      setError(null)
+
+      if (
+        !keys?.encryptedPrivateKey ||
+        !keys?.privateKeyIv ||
+        !keys?.kdfParameters
+      ) {
+        throw new Error(
+          'Podaci za otključavanje trezora nisu potpuni.',
+        )
+      }
+
+      const parameters =
+        typeof keys.kdfParameters === 'string'
+          ? JSON.parse(keys.kdfParameters)
+          : keys.kdfParameters
+
+      const iterations = Number(parameters.iterations)
+
+      if (
+        !parameters.salt ||
+        !Number.isSafeInteger(iterations) ||
+        iterations <= 0
+      ) {
+        throw new Error('Neispravni KDF parametri.')
+      }
+
+      if (
+        keys.kdfAlgorithm &&
+        keys.kdfAlgorithm !== 'PBKDF2-HMAC-SHA-256'
+      ) {
+        throw new Error(
+          'Nepodržan algoritam za izvođenje ključa.',
+        )
+      }
+
+      const salt = base64ToBytes(parameters.salt)
+
+      if (!salt.length) {
+        throw new Error('Salt nije ispravan.')
+      }
+
+      const derivedKek = await deriveKek(
+        masterPassword,
+        salt,
+        iterations,
+      )
+
+      let decryptedPrivateKey
+
+      try {
+        decryptedPrivateKey = await decryptPrivateKey(
+          derivedKek,
+          {
+            ciphertext: base64ToBytes(keys.encryptedPrivateKey),
+            iv: base64ToBytes(keys.privateKeyIv),
+          },
+        )
+      } catch {
+        throw new Error('Pogrešna master lozinka.')
+      }
+
+      let importedPrivateKey
+
+      try {
+        importedPrivateKey = await importPrivateKeyPkcs8(
+          decryptedPrivateKey,
+        )
+      } finally {
+        // Ukloni privremene bajtove privatnog ključa iz memorije.
+        decryptedPrivateKey?.fill?.(0)
+      }
+
+      if (requestId !== statusRequestId.current) {
+        throw new Error('Zahtjev za otključavanje je poništen.')
+      }
+
+      setKek(derivedKek)
+      setPrivateKey(importedPrivateKey)
+      setPublicKey(keys.publicKey || null)
+      setVaultKeys(keys)
+      setUnlocked(true)
+      setStatus('unlocked')
+      setError(null)
+
+      return true
+    } catch (err) {
+      if (requestId === statusRequestId.current) {
+        clearUnlockedMaterial()
+        setStatus('locked')
+      }
+
+      throw err
+    } finally {
+      setLoading(false)
+    }
+  }, [authenticated, clearUnlockedMaterial])
+
+  /**
+   * Zaključavanje trezora.
+   */
+  const lock = useCallback(() => {
+    statusRequestId.current += 1
+
+    clearUnlockedMaterial()
+    setStatus(vaultKeys ? 'locked' : 'needs-setup')
+    setError(null)
+  }, [clearUnlockedMaterial, vaultKeys])
+
+  /**
+   * Šifrovanje nove tajne.
+   */
   const encryptSecret = useCallback(
     async (plaintextValue) => {
-      if (!kek) throw new Error('Vault is not unlocked')
+      if (!kek || !unlocked) {
+        throw new Error('Trezor nije otključan.')
+      }
+
       const dek = await generateDek()
-      const valueEnvelope = await encryptBytes(dek, new TextEncoder().encode(plaintextValue))
+
+      const valueEnvelope = await encryptBytes(
+        dek,
+        new TextEncoder().encode(plaintextValue),
+      )
+
       const wrappedDek = await wrapDek(kek, dek)
+
       return {
         encryptedValue: bytesToBase64(valueEnvelope.ciphertext),
         contentIv: bytesToBase64(valueEnvelope.iv),
         encryptedDek: bytesToBase64(wrappedDek.ciphertext),
         dekIv: bytesToBase64(wrappedDek.iv),
         encryptionAlgorithm: 'AES-256-GCM',
-        // Internal: raw DEK bytes for sharing (not sent to server)
         _dek: dek,
       }
     },
-    [kek]
+    [kek, unlocked],
   )
 
-  // Decrypt a secret value using the KEK.
+  /**
+   * Dešifrovanje vlastite tajne.
+   */
   const decryptSecret = useCallback(
     async ({ encryptedValue, contentIv, encryptedDek, dekIv }) => {
-      if (!kek) throw new Error('Vault is not unlocked')
-      const dekEnvelope = {
+      if (!kek || !unlocked) {
+        throw new Error('Trezor nije otključan.')
+      }
+
+      const dek = await unwrapDek(kek, {
         iv: base64ToBytes(dekIv),
         ciphertext: base64ToBytes(encryptedDek),
-      }
-      const dek = await unwrapDek(kek, dekEnvelope)
-      const valueEnvelope = {
+      })
+
+      const plaintext = await decryptBytes(dek, {
         iv: base64ToBytes(contentIv),
         ciphertext: base64ToBytes(encryptedValue),
-      }
-      const plaintext = await decryptBytes(dek, valueEnvelope)
+      })
+
       return new TextDecoder().decode(plaintext)
     },
-    [kek]
+    [kek, unlocked],
   )
 
-  // Wrap a DEK for a recipient using their RSA public key.
+  /**
+   * Omotavanje DEK-a za primaoca.
+   */
   const wrapDekForRecipient = useCallback(
     async (recipientPublicKeySpki, dek) => {
-      const { importPublicKeySpki, wrapDekForRecipient: wrapForRecipient } = await import(
-        '../crypto/index.js'
+      if (!unlocked) {
+        throw new Error('Trezor nije otključan.')
+      }
+
+      const recipientPublicKey = await importPublicKeySpki(
+        base64ToBytes(recipientPublicKeySpki),
       )
-      const pubKey = await importPublicKeySpki(base64ToBytes(recipientPublicKeySpki))
-      const wrapped = await wrapForRecipient(pubKey, dek)
+
+      const wrapped = await cryptoWrapDekForRecipient(
+        recipientPublicKey,
+        dek,
+      )
+
       return bytesToBase64(wrapped)
     },
-    []
+    [unlocked],
   )
 
+  /**
+   * Odmotavanje DEK-a za trenutnog korisnika.
+   */
+  const unwrapSharedDek = useCallback(
+    async (wrappedDek) => {
+      if (!privateKey || !unlocked) {
+        throw new Error('Trezor nije otključan.')
+      }
+
+      return cryptoUnwrapDekForRecipient(
+        privateKey,
+        base64ToBytes(wrappedDek),
+      )
+    },
+    [privateKey, unlocked],
+  )
+
+  /**
+   * Dešifrovanje dijeljene tajne.
+   */
+  const decryptSharedSecret = useCallback(
+    async ({ encryptedValue, contentIv, recipientEncryptedDek }) => {
+      if (!privateKey || !unlocked) {
+        throw new Error('Trezor nije otključan.')
+      }
+
+      const dek = await cryptoUnwrapDekForRecipient(
+        privateKey,
+        base64ToBytes(recipientEncryptedDek),
+      )
+
+      const plaintext = await decryptBytes(dek, {
+        iv: base64ToBytes(contentIv),
+        ciphertext: base64ToBytes(encryptedValue),
+      })
+
+      return new TextDecoder().decode(plaintext)
+    },
+    [privateKey, unlocked],
+  )
+
+  useEffect(() => {
+    if (!authenticated) return
+
+    const timeoutId = window.setTimeout(() => {
+      refreshVaultStatus()
+    }, 0)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [authenticated, refreshVaultStatus])
+
   const value = {
-    masterPassword,
     kek,
-    salt,
-    kdfParameters,
+    privateKey,
+    publicKey,
+    vaultKeys,
     unlocked,
+    loading,
+    status,
+    error,
+
     unlock,
     lock,
+    clearVault,
+    refreshVaultStatus,
+    completeVaultSetup,
+
     encryptSecret,
     decryptSecret,
     wrapDekForRecipient,
+    unwrapSharedDek,
+    decryptSharedSecret,
   }
 
-  return <VaultContext.Provider value={value}>{children}</VaultContext.Provider>
+  return (
+    <VaultContext.Provider value={value}>
+      {children}
+    </VaultContext.Provider>
+  )
 }
 
 export function useVault() {
-  const ctx = useContext(VaultContext)
-  if (!ctx) {
+  const context = useContext(VaultContext)
+
+  if (!context) {
     throw new Error('useVault must be used within a VaultProvider')
   }
-  return ctx
+
+  return context
 }

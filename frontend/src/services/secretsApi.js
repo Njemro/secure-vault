@@ -1,74 +1,81 @@
 // Secret CRUD and sharing API client.
-// All calls go through the Gateway (VITE_API_BASE_URL). Binary fields
-// (IVs, ciphertext, wrapped DEKs) are Base64 strings at the JSON boundary and
-// are converted to/from Uint8Array by the caller.
+// All calls go through the Gateway (VITE_API_BASE_URL).
+// Binary fields (IVs, ciphertext, wrapped DEKs) are Base64 strings at the JSON boundary.
+
 import { authenticatedFetch, readJson } from './api.js'
 
-const BASE = `${import.meta.env.VITE_API_BASE_URL || '/api'}/secrets`
+const BASE = '/secrets'
 
 /** List secrets owned by the authenticated user. */
-export async function listSecrets(token) {
-  const res = await authenticatedFetch(BASE, { token })
+export async function listSecrets() {
+  const res = await authenticatedFetch(BASE)
   return readJson(res)
 }
 
 /** Get one owned secret by id. */
-export async function getSecret(token, id) {
-  const res = await authenticatedFetch(`${BASE}/${id}`, { token })
+export async function getSecret(id) {
+  const res = await authenticatedFetch(`${BASE}/${encodeURIComponent(id)}`)
   return readJson(res)
 }
 
-/** Create a new encrypted secret (client produces ciphertext). */
-export async function createSecret(token, payload) {
+/** Create a new encrypted secret. */
+export async function createSecret(payload) {
   const res = await authenticatedFetch(BASE, {
-    token,
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: payload,
   })
   return readJson(res)
 }
 
 /** Replace a secret's metadata and encrypted payload. */
-export async function updateSecret(token, id, payload) {
-  const res = await authenticatedFetch(`${BASE}/${id}`, {
-    token,
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
+export async function updateSecret(id, payload) {
+  const res = await authenticatedFetch(
+    `${BASE}/${encodeURIComponent(id)}`,
+    {
+      method: 'PUT',
+      body: payload,
+    },
+  )
   return readJson(res)
 }
 
 /** Delete an owned secret. */
-export async function deleteSecret(token, id) {
-  const res = await authenticatedFetch(`${BASE}/${id}`, {
-    token,
-    method: 'DELETE',
-  })
-  if (res.status === 204) return
+export async function deleteSecret(id) {
+  const res = await authenticatedFetch(
+    `${BASE}/${encodeURIComponent(id)}`,
+    {
+      method: 'DELETE',
+    },
+  )
+
+  if (res.status === 204) return null
+
   return readJson(res)
 }
 
 /** List secrets shared with the authenticated user. */
-export async function listSharedSecrets(token) {
-  const res = await authenticatedFetch(`${BASE}/shared`, { token })
+export async function listSharedSecrets() {
+  const res = await authenticatedFetch(`${BASE}/shared`)
   return readJson(res)
 }
 
-/** Get one shared secret (recipient-only). */
-export async function getSharedSecret(token, id) {
-  const res = await authenticatedFetch(`${BASE}/shared/${id}`, { token })
+/** Get one shared secret. */
+export async function getSharedSecret(id) {
+  const res = await authenticatedFetch(
+    `${BASE}/shared/${encodeURIComponent(id)}`,
+  )
   return readJson(res)
 }
 
-/** Share a secret with one or more recipients (client wraps DEK per recipient). */
-export async function shareSecret(token, secretId, recipients) {
-  const res = await authenticatedFetch(`${BASE}/${secretId}/shares`, {
-    token,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ recipients }),
-  })
+/** Share a secret with one or more recipients. */
+export async function shareSecret(secretId, recipients) {
+  const res = await authenticatedFetch(
+    `${BASE}/${encodeURIComponent(secretId)}/shares`,
+    {
+      method: 'POST',
+      body: { recipients },
+    },
+  )
+
   return readJson(res)
 }

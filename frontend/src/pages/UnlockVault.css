@@ -1,0 +1,91 @@
+.unlock-vault-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #0b1120;
+  color: #e5e7eb;
+}
+
+.unlock-vault-card {
+  width: 100%;
+  max-width: 420px;
+  padding: 32px;
+  border: 1px solid #263247;
+  border-radius: 16px;
+  background: #111827;
+  box-shadow: 0 20px 50px rgb(0 0 0 / 25%);
+}
+
+.unlock-vault-icon {
+  margin-bottom: 16px;
+  font-size: 40px;
+  text-align: center;
+}
+
+.unlock-vault-card h1 {
+  margin: 0 0 12px;
+  text-align: center;
+  font-size: 26px;
+}
+
+.unlock-vault-card > p {
+  margin-bottom: 24px;
+  color: #9ca3af;
+  line-height: 1.6;
+}
+
+.unlock-vault-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.unlock-vault-card label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.unlock-vault-card input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid #374151;
+  border-radius: 8px;
+  background: #0b1120;
+  color: #f9fafb;
+  font: inherit;
+}
+
+.unlock-vault-card input:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+.unlock-vault-card button {
+  margin-top: 8px;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: #3b82f6;
+  color: white;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.unlock-vault-card button:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.unlock-vault-card button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.unlock-vault-error {
+  margin: 0;
+  color: #fca5a5;
+  font-size: 14px;
+}

@@ -1,60 +1,87 @@
-import { useState, useEffect, useCallback } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext.jsx'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useVault } from '../context/VaultContext.jsx'
-import { getSecret, deleteSecret } from '../services/secretsApi.js'
-import PageHeader from '../components/PageHeader.jsx'
+import {
+  getSecret,
+  deleteSecret,
+} from '../services/secretsApi.js'
 
 export default function SecretDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { token } = useAuth()
+
   const { unlocked, unlock, decryptSecret } = useVault()
 
   const [secret, setSecret] = useState(null)
-  const [decryptedValue, setDecryptedValue] = useState(null)
-  const [showDecrypted, setShowDecrypted] = useState(false)
   const [masterPassword, setMasterPassword] = useState('')
-  const [showUnlock, setShowUnlock] = useState(true)
-  const [unlockError, setUnlockError] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [deleting, setDeleting] = useState(false)
 
-  const loadSecret = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await getSecret(token, id)
-      setSecret(data)
-    } catch (err) {
-      setError(err.message || 'Failed to load secret')
-    } finally {
-      setLoading(false)
-    }
-  }, [token, id])
+  const [decryptedValue, setDecryptedValue] = useState('')
+  const [isDecrypted, setIsDecrypted] = useState(false)
+
+  const [loading, setLoading] = useState(true)
+  const [decrypting, setDecrypting] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState('')
+
+  const showUnlock = !unlocked
+  const visibleDecryptedValue =
+    unlocked && isDecrypted ? decryptedValue : ''
 
   useEffect(() => {
-    const fetchData = async () => {
-      await loadSecret()
-    }
-    fetchData()
-  }, [loadSecret])
+    let cancelled = false
 
-  const handleUnlock = async (e) => {
-    e && e.preventDefault()
-    setUnlockError(null)
+    async function loadSecret() {
+      setLoading(true)
+      setError('')
+
+      try {
+        const data = await getSecret(id)
+
+        if (!cancelled) {
+          setSecret(data)
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err.message || 'Greška prilikom učitavanja tajne.')
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadSecret()
+
+    return () => {
+      cancelled = true
+    }
+  }, [id])
+
+  async function handleUnlock(event) {
+    event.preventDefault()
+    setError('')
+
     try {
       await unlock(masterPassword)
-      setShowUnlock(false)
+      setMasterPassword('')
     } catch (err) {
-      setUnlockError('Failed to unlock vault: ' + (err.message || 'unknown error'))
+      setError(err.message || 'Pogrešna master lozinka.')
     }
   }
 
-  const handleDecrypt = async () => {
+  async function handleDecrypt() {
     if (!secret) return
-    setError(null)
+
+    setError('')
+
+    if (!unlocked) {
+      setError('Prvo otključajte vault.')
+      return
+    }
+
+    setDecrypting(true)
+
     try {
       const plaintext = await decryptSecret({
         encryptedValue: secret.encryptedValue,
@@ -62,124 +89,155 @@ export default function SecretDetail() {
         encryptedDek: secret.encryptedDek,
         dekIv: secret.dekIv,
       })
+
       setDecryptedValue(plaintext)
-      setShowDecrypted(true)
+      setIsDecrypted(true)
     } catch (err) {
-      setError('Failed to decrypt secret: ' + (err.message || 'unknown error'))
+      setError(err.message || 'Dešifrovanje nije uspjelo.')
+    } finally {
+      setDecrypting(false)
     }
   }
 
-  const handleDelete = async (e) => {
-    e.preventDefault()
-    if (!window.confirm('Are you sure you want to delete this secret?')) return
+  function hideDecryptedValue() {
+    setDecryptedValue('')
+    setIsDecrypted(false)
+  }
+
+  async function handleDelete() {
+    const confirmed = window.confirm(
+      'Da li ste sigurni da želite trajno obrisati ovu tajnu?',
+    )
+
+    if (!confirmed) return
+
     setDeleting(true)
+    setError('')
+
     try {
-      await deleteSecret(token, id)
-      navigate('/my-secrets', { replace: true })
+      await deleteSecret(id)
+      navigate('/secrets', { replace: true })
     } catch (err) {
-      setError(err.message || 'Failed to delete secret')
+      setError(err.message || 'Greška prilikom brisanja tajne.')
     } finally {
       setDeleting(false)
     }
   }
 
   if (loading) {
-    return (
-      <section className="page">
-        <PageHeader title="Loading" subtitle="Please wait..." />
-        <p>Loading secret...</p>
-      </section>
-    )
+    return <p>Učitavanje tajne...</p>
   }
 
-  if (error) {
+  if (!secret) {
     return (
-      <section className="page">
-        <PageHeader title="Error" subtitle="Could not load secret." />
-        <p className="form__error">{error}</p>
-      </section>
-    )
-  }
-
-  if (showUnlock) {
-    return (
-      <section className="page">
-        <PageHeader title="Unlock Vault" subtitle="Enter your master password to view this secret." />
-        <form onSubmit={handleUnlock} className="form">
-          <div className="form__group">
-            <label className="form__label">Master Password</label>
-            <input
-              className="form__input"
-              type="password"
-              value={masterPassword}
-              onChange={(e) => setMasterPassword(e.target.value)}
-              placeholder="Your vault master password"
-              required
-              autoComplete="new-password"
-            />
-          </div>
-          {unlockError && <p className="form__error">{unlockError}</p>}
-          <button type="submit" className="btn btn--primary btn--full">
-            Unlock Vault
-          </button>
-        </form>
-      </section>
+      <main>
+        <h1>Tajna</h1>
+        <p role="alert">{error || 'Tajna nije pronađena.'}</p>
+        <Link to="/secrets">Nazad na moje tajne</Link>
+      </main>
     )
   }
 
   return (
-    <section className="page">
-      <PageHeader title={secret.name} subtitle="Secret details" />
-      <div className="card">
-        <p><strong>Name:</strong> {secret.name}</p>
-        <p><strong>Description:</strong> {secret.description || '—'}</p>
-        <p><strong>Algorithm:</strong> {secret.encryptionAlgorithm}</p>
-        <p><strong>Created:</strong> {secret.createdAt}</p>
-        <p><strong>Last rotated:</strong> {secret.lastRotatedAt || '—'}</p>
-      </div>
+    <main className="secret-page">
+      <h1>{secret.name}</h1>
 
-      <div className="card">
-        <h3 className="card__title">Secret Value</h3>
-        {showDecrypted ? (
-          <>
-            <p className="form__error">
-              Warning: plaintext is visible only in this browser session.
-            </p>
-            <p><strong>Value:</strong> {decryptedValue}</p>
-            <button
-              type="button"
-              className="btn btn--outline"
-              onClick={() => setShowDecrypted(false)}
-            >
-              Hide Value
-            </button>
-          </>
-        ) : (
+      {secret.description && (
+        <p>{secret.description}</p>
+      )}
+
+      <p>
+        <strong>Algoritam:</strong>{' '}
+        {secret.encryptionAlgorithm || 'Nije naveden'}
+      </p>
+
+      <p>
+        <strong>Kreirano:</strong>{' '}
+        {secret.createdAt
+          ? new Date(secret.createdAt).toLocaleString()
+          : 'Nepoznato'}
+      </p>
+
+      {error && (
+        <p role="alert" style={{ color: 'red' }}>
+          {error}
+        </p>
+      )}
+
+      {showUnlock && (
+        <form onSubmit={handleUnlock}>
+          <h2>Otključaj vault</h2>
+
+          <label htmlFor="masterPassword">Master lozinka</label>
+          <input
+            id="masterPassword"
+            type="password"
+            value={masterPassword}
+            onChange={(e) => setMasterPassword(e.target.value)}
+            required
+          />
+
+          <button type="submit" disabled={!masterPassword}>
+            Otključaj
+          </button>
+        </form>
+      )}
+
+      <section>
+        <h2>Sadržaj tajne</h2>
+
+        {!unlocked || !isDecrypted ? (
           <button
             type="button"
-            className="btn btn--primary"
             onClick={handleDecrypt}
-            disabled={!unlocked}
+            disabled={decrypting || !unlocked}
           >
-            {unlocked ? 'Reveal Secret Value' : 'Unlock to Reveal'}
+            {decrypting ? 'Dešifrovanje...' : 'Prikaži sadržaj'}
           </button>
-        )}
-        {error && <p className="form__error">{error}</p>}
-      </div>
+        ) : (
+          <>
+            <pre
+              style={{
+                whiteSpace: 'pre-wrap',
+                overflowWrap: 'anywhere',
+              }}
+            >
+              {visibleDecryptedValue}
+            </pre>
 
-      <div className="card">
-        <Link to={`/secrets/${id}/edit`} className="btn btn--outline">
-          Edit Secret
+            <button
+              type="button"
+              onClick={hideDecryptedValue}
+            >
+              Sakrij sadržaj
+            </button>
+          </>
+        )}
+      </section>
+
+      <hr />
+
+      <nav>
+        <Link to={`/secrets/${id}/edit`}>
+          Izmijeni tajnu
         </Link>
+
+        {' | '}
+
+        <Link to="/secrets">
+          Nazad na moje tajne
+        </Link>
+      </nav>
+
+      <div>
         <button
           type="button"
-          className="btn btn--danger"
           onClick={handleDelete}
           disabled={deleting}
         >
-          {deleting ? 'Deleting...' : 'Delete Secret'}
+          {deleting ? 'Brisanje...' : 'Obriši tajnu'}
         </button>
       </div>
-    </section>
+    </main>
   )
 }

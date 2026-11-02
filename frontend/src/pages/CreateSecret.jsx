@@ -1,149 +1,153 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext.jsx'
+import { Link, useNavigate } from 'react-router-dom'
 import { useVault } from '../context/VaultContext.jsx'
 import { createSecret } from '../services/secretsApi.js'
-import PageHeader from '../components/PageHeader.jsx'
 
 export default function CreateSecret() {
   const navigate = useNavigate()
-  const { token } = useAuth()
   const { unlocked, unlock, encryptSecret } = useVault()
 
-  const [form, setForm] = useState({ name: '', description: '', value: '' })
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [value, setValue] = useState('')
   const [masterPassword, setMasterPassword] = useState('')
-  const [unlockError, setUnlockError] = useState(null)
+
   const [showUnlock, setShowUnlock] = useState(!unlocked)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
+  const [error, setError] = useState('')
 
-  const updateField = (key, value) => {
-    setForm((prev) => ({ ...prev, [key]: value }))
-  }
+  async function handleUnlock(event) {
+    event.preventDefault()
+    setError('')
 
-  const handleUnlock = async (e) => {
-    e && e.preventDefault()
-    setUnlockError(null)
     try {
       await unlock(masterPassword)
+      setMasterPassword('')
       setShowUnlock(false)
     } catch (err) {
-      setUnlockError('Failed to unlock vault: ' + (err.message || 'unknown error'))
+      setError(err.message || 'Pogrešna master lozinka.')
     }
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setError(null)
+  async function handleSubmit(event) {
+    event.preventDefault()
+    setError('')
 
     if (!unlocked) {
       setShowUnlock(true)
+      setError('Prvo otključajte vault.')
+      return
+    }
+
+    if (!name.trim() || !value.trim()) {
+      setError('Naziv i sadržaj tajne su obavezni.')
       return
     }
 
     setLoading(true)
+
     try {
-      const encrypted = await encryptSecret(form.value)
-      await createSecret(token, {
-        name: form.name,
-        description: form.description,
-        encryptedValue: encrypted.encryptedValue,
-        encryptedDek: encrypted.encryptedDek,
-        contentIv: encrypted.contentIv,
-        dekIv: encrypted.dekIv,
-        encryptionAlgorithm: encrypted.encryptionAlgorithm,
+      const encryptedData = await encryptSecret(value)
+
+      await createSecret({
+        name: name.trim(),
+        description: description.trim(),
+        encryptedValue: encryptedData.encryptedValue,
+        encryptedDek: encryptedData.encryptedDek,
+        contentIv: encryptedData.contentIv,
+        dekIv: encryptedData.dekIv,
+        encryptionAlgorithm: encryptedData.encryptionAlgorithm,
       })
-      navigate('/my-secrets', { replace: true })
+
+      setName('')
+      setDescription('')
+      setValue('')
+
+      navigate('/secrets', { replace: true })
     } catch (err) {
-      setError(err.message || 'Failed to create secret')
+      setError(err.message || 'Greška prilikom kreiranja tajne.')
     } finally {
       setLoading(false)
     }
   }
 
-  if (showUnlock) {
-    return (
-      <section className="page">
-        <PageHeader
-          title="Unlock Vault"
-          subtitle="Enter your master password to create a new secret."
-        />
-        <form onSubmit={handleUnlock} className="form">
-          <div className="form__group">
-            <label className="form__label">Master Password</label>
-            <input
-              className="form__input"
-              type="password"
-              value={masterPassword}
-              onChange={(e) => setMasterPassword(e.target.value)}
-              placeholder="Your vault master password"
-              required
-              autoComplete="new-password"
-            />
-            <p className="form__hint">
-              Client-side only. Used to derive the key encryption key (KEK).
-              Never sent to the server.
-            </p>
-          </div>
-          {unlockError && <p className="form__error">{unlockError}</p>}
-          <button type="submit" className="btn btn--primary btn--full">
-            Unlock Vault
+  return (
+    <main className="secret-page">
+      <h1>Kreiranje nove tajne</h1>
+
+      <p>
+        Sadržaj tajne se šifruje na tvom uređaju prije slanja serveru.
+      </p>
+
+      {error && (
+        <p role="alert" style={{ color: 'red' }}>
+          {error}
+        </p>
+      )}
+
+      {showUnlock && !unlocked && (
+        <form onSubmit={handleUnlock}>
+          <h2>Otključaj vault</h2>
+
+          <label htmlFor="masterPassword">Master lozinka</label>
+          <input
+            id="masterPassword"
+            type="password"
+            value={masterPassword}
+            onChange={(e) => setMasterPassword(e.target.value)}
+            required
+          />
+
+          <button type="submit" disabled={!masterPassword}>
+            Otključaj
           </button>
         </form>
-      </section>
-    )
-  }
+      )}
 
-  return (
-    <section className="page">
-      <PageHeader
-        title="Create Secret"
-        subtitle="Encrypt and store a new secret. Encryption happens client-side."
-      />
-      <form onSubmit={handleSubmit} className="form">
-        <div className="form__group">
-          <label className="form__label">Name</label>
-          <input
-            className="form__input"
-            type="text"
-            value={form.name}
-            onChange={(e) => updateField('name', e.target.value)}
-            placeholder="e.g. Production Database Password"
-            required
-          />
-        </div>
-        <div className="form__group">
-          <label className="form__label">Description</label>
-          <textarea
-            className="form__input"
-            value={form.description}
-            onChange={(e) => updateField('description', e.target.value)}
-            placeholder="Optional description"
-          />
-        </div>
-        <div className="form__group">
-          <label className="form__label">Secret Value</label>
-          <textarea
-            className="form__input"
-            value={form.value}
-            onChange={(e) => updateField('value', e.target.value)}
-            placeholder="The plaintext secret value (encrypted client-side before sending)"
-            required
-          />
-          <p className="form__hint">
-            This value is encrypted with AES-256-GCM in your browser before it
-            leaves this page. The backend never sees the plaintext.
-          </p>
-        </div>
-        {error && <p className="form__error">{error}</p>}
-        <button
-          type="submit"
-          className="btn btn--primary btn--full"
-          disabled={loading}
-        >
-          {loading ? 'Encrypting...' : 'Create Secret'}
-        </button>
-      </form>
-    </section>
+      {(!showUnlock || unlocked) && (
+        <form onSubmit={handleSubmit}>
+          <div>
+            <label htmlFor="name">Naziv tajne</label>
+            <input
+              id="name"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={255}
+              required
+            />
+          </div>
+
+          <div>
+            <label htmlFor="description">Opis</label>
+            <textarea
+              id="description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="value">Sadržaj tajne</label>
+            <textarea
+              id="value"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              rows={8}
+              required
+            />
+          </div>
+
+          <button type="submit" disabled={loading}>
+            {loading ? 'Čuvanje...' : 'Sačuvaj tajnu'}
+          </button>
+        </form>
+      )}
+
+      <p>
+        <Link to="/secrets">Nazad na moje tajne</Link>
+      </p>
+    </main>
   )
 }

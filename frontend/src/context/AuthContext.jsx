@@ -1,79 +1,129 @@
-import { createContext, useContext, useState, useCallback } from 'react'
-import { login, verifyMfa } from '../services/api.js'
-import { getMfaStatus } from '../services/mfaApi.js'
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
+import keycloak from '../auth/keycloak'
+
+import { setAccessTokenProvider } from '../services/api'
 
 const AuthContext = createContext(null)
 
-/**
- * Authentication context for Secure Vault.
- *
- * The access token is kept in memory only (never localStorage). It is
- * attached to every authenticated API request. On 401 the consumer should
- * redirect to login.
- */
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(null)
-  const [user, setUser] = useState(null)
+  const [authenticated, setAuthenticated] = useState(
+    Boolean(keycloak.authenticated),
+  )
+  const [token, setToken] = useState(keycloak.token || null)
+  const [user, setUser] = useState(keycloak.tokenParsed || null)
 
-  const signIn = useCallback(async ({ username, password }) => {
-    const response = await login({ username, password })
-    setToken(response.accessToken || null)
-    setUser({
-      id: response.userId,
-      username: response.username,
-      role: response.role,
-      status: response.status,
-      mfaRequired: response.mfaRequired,
-      mfaEnrolled: response.mfaEnrolled,
-    })
-    return response
+  const syncSession = useCallback(() => {
+    setAuthenticated(Boolean(keycloak.authenticated))
+    setToken(keycloak.token || null)
+    setUser(keycloak.tokenParsed || null)
   }, [])
 
-  const completeMfa = useCallback(async (tempToken, code) => {
-    const response = await verifyMfa(tempToken, code)
-    setToken(response.accessToken || null)
-    setUser({
-      id: response.userId,
-      username: response.username,
-      role: response.role,
-      status: response.status,
-      mfaRequired: response.mfaRequired,
-      mfaEnrolled: response.mfaEnrolled,
-    })
-    return response
-  }, [])
-
-  const signOut = useCallback(() => {
+  const handleSessionExpired = useCallback(() => {
+    setAuthenticated(false)
     setToken(null)
     setUser(null)
+    
+    // Potpuno učitavanje stranice uklanja osjetljive podatke
+    // koji su ostali u memoriji aplikacije, uključujući Vault ključeve.
+    window.location.replace('/login?reason=session-expired')
   }, [])
 
-  const checkMfaStatus = useCallback(async () => {
-    if (!token) return null
-    return getMfaStatus(token)
-  }, [token])
+  useEffect(() => {
+    keycloak.onAuthSuccess = syncSession
+    keycloak.onAuthRefreshSuccess = syncSession
+    keycloak.onAuthLogout = syncSession
 
-  const value = {
-    token,
-    user,
-    isAuthenticated: !!token,
-    signIn,
-    completeMfa,
-    signOut,
-    checkMfaStatus,
-  }
+    keycloak.onTokenExpired = async () => {
+      try {
+        await keycloak.updateToken(30)
+        syncSession()
+      } catch (error) {
+        console.error('Token refresh failed:', error)
+        handleSessionExpired()
+      }
+    }
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
+    return () => {
+      keycloak.onAuthSuccess = undefined
+      keycloak.onAuthRefreshSuccess = undefined
+      keycloak.onAuthLogout = undefined
+      keycloak.onTokenExpired = undefined
+    }
+  }, [syncSession, handleSessionExpired])
+
+  const signIn = useCallback(async () => {
+    await keycloak.login({
+      redirectUri: `${window.location.origin}/dashboard`,
+    })
+  }, [])
+
+  const signOut = useCallback(async () => {
+    await keycloak.logout({
+      redirectUri: `${window.location.origin}/login`,
+    })
+  }, [])
+
+
+  const getAccessToken = useCallback(async () => {
+    if (!keycloak.authenticated) {
+      handleSessionExpired()
+      return null
+    }
+
+    try {
+      await keycloak.updateToken(30)
+
+      if (!keycloak.authenticated || !keycloak.token) {
+        handleSessionExpired()
+        return null
+      }
+
+      syncSession()
+      return keycloak.token
+    } catch (error) {
+      console.error('Token refresh failed:', error)
+      handleSessionExpired()
+      return null
+    }
+  }, [syncSession, handleSessionExpired])
+
+  useEffect(() => {
+    setAccessTokenProvider(getAccessToken)
+
+    return () => {
+      setAccessTokenProvider(null)
+    }
+  }, [getAccessToken])
+
+  const value = useMemo(
+    () => ({
+      authenticated,
+      token,
+      user,
+      signIn,
+      signOut,
+      getAccessToken,
+    }),
+    [authenticated, token, user, signIn, signOut, getAccessToken],
   )
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {
-  const ctx = useContext(AuthContext)
-  if (!ctx) {
-    throw new Error('useAuth must be used within an AuthProvider')
+  const context = useContext(AuthContext)
+
+  if (!context) {
+    throw new Error('useAuth must be used inside AuthProvider')
   }
-  return ctx
+
+  return context
 }

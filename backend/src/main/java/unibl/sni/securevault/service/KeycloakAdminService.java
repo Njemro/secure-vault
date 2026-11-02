@@ -10,6 +10,8 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
+import org.keycloak.representations.idm.UserRepresentation;
+import org.keycloak.representations.idm.CredentialRepresentation;
 
 import java.util.Map;
 
@@ -34,7 +36,7 @@ public class KeycloakAdminService {
     private final String adminClientId;
 
     public KeycloakAdminService(
-            @Value("${keycloak.server.url:}") String serverUrl,
+            @Value("${keycloak.server-url:}") String serverUrl,
             @Value("${keycloak.realm:}") String realm,
             @Value("${keycloak.admin.username:}") String adminUsername,
             @Value("${keycloak.admin.password:}") String adminPassword,
@@ -98,7 +100,7 @@ public class KeycloakAdminService {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(adminToken);
-        HttpEntity<Map<String, Object>> request = new HttpEntity<>(userRepresentation(username, email, password), headers);
+        HttpEntity<UserRepresentation> request = new HttpEntity<>(userRepresentation(username, email, password), headers);
 
         ResponseEntity<Void> response = restTemplate.postForEntity(createUri, request, Void.class);
         String location = response.getHeaders().getLocation() != null
@@ -134,19 +136,27 @@ public class KeycloakAdminService {
         }
     }
 
-    private static Map<String, Object> userRepresentation(String username, String email, String password) {
-        java.util.Map<String, Object> user = new java.util.LinkedHashMap<>();
-        user.put("username", username);
-        user.put("email", email);
-        user.put("enabled", true);
-        user.put("emailVerified", false);
-        user.put("credentials", java.util.List.of(
-                java.util.Map.of(
-                        "type", "password",
-                        "value", password,
-                        "temporary", false
-                )
-        ));
+    
+    private UserRepresentation userRepresentation(
+            String username,
+            String email,
+            String password) {
+
+        UserRepresentation user = new UserRepresentation();
+        user.setUsername(username);
+        user.setEmail(email);
+        user.setEnabled(true);
+        user.setEmailVerified(false);
+        user.setRequiredActions(java.util.List.of("CONFIGURE_TOTP"));
+
+        CredentialRepresentation credential = new CredentialRepresentation();
+        credential.setType(CredentialRepresentation.PASSWORD);
+        credential.setValue(password);
+        credential.setTemporary(false);
+
+        user.setCredentials(java.util.List.of(credential));
+
         return user;
     }
+
 }
