@@ -1,3 +1,4 @@
+
 package unibl.sni.securevault.entity;
 
 import jakarta.persistence.Column;
@@ -15,7 +16,7 @@ import java.util.UUID;
 /**
  * Application user. Authentication (passwords) and TOTP MFA secrets are managed
  * by Keycloak / MfaCredential - never stored here in plaintext. The vault master
- * password never leaves the browser (AGENTS.md section 8).
+ * password never leaves the browser.
  */
 @Entity
 @Table(name = "users")
@@ -77,5 +78,19 @@ public class User {
 
     public LocalDateTime getCreatedAt() {
         return createdAt;
+    }
+
+    public void changeRole(Role role) {
+        if (role == null) {
+            throw new IllegalArgumentException("Role must not be null.");
+        }
+        this.role = role;
+    }
+
+    public void changeStatus(UserStatus status) {
+        if (status == null) {
+            throw new IllegalArgumentException("Status must not be null.");
+        }
+        this.status = status;
     }
 }

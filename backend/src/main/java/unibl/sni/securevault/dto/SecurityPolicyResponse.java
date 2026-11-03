@@ -1,14 +1,28 @@
 package unibl.sni.securevault.dto;
 
+import unibl.sni.securevault.entity.SecurityPolicy;
+
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-/** Current security policy values (admin-facing read model). */
 public record SecurityPolicyResponse(
         UUID id,
         int minMasterPasswordLength,
         int secretRotationIntervalDays,
-        int sessionDurationMinutes,
+        int sessionInactivityTimeoutMinutes,
+        int maxSessionDurationMinutes,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt) {
+        LocalDateTime updatedAt
+) {
+    public static SecurityPolicyResponse from(SecurityPolicy policy) {
+        return new SecurityPolicyResponse(
+                policy.getId(),
+                policy.getMinMasterPasswordLength(),
+                policy.getSecretRotationIntervalDays(),
+                policy.getSessionDurationMinutes(),
+                policy.getMaxSessionDurationMinutes(),
+                policy.getCreatedAt(),
+                policy.getUpdatedAt()
+        );
+    }
 }

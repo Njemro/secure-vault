@@ -346,6 +346,47 @@ export function VaultProvider({ children }) {
   )
 
   /**
+   * Priprema DEK postojeće tajne za dijeljenje sa primaocem.
+   * DEK se prvo odmotava vlasnikovim KEK-om, a zatim
+   * omotava javnim RSA ključem primaoca.
+   */
+  const prepareSecretForSharing = useCallback(
+    async (secret, recipientPublicKeySpki) => {
+      if (!kek || !unlocked) {
+        throw new Error('Trezor nije otključan.')
+      }
+
+      if (!secret?.encryptedDek || !secret?.dekIv) {
+        throw new Error('Nedostaju podaci za otključavanje DEK-a tajne.')
+      }
+
+      if (!recipientPublicKeySpki) {
+        throw new Error('Javni ključ primaoca nije dostupan.')
+      }
+
+      // Odmotavanje DEK-a vlasnikovim KEK-om.
+      const dek = await unwrapDek(kek, {
+        iv: base64ToBytes(secret.dekIv),
+        ciphertext: base64ToBytes(secret.encryptedDek),
+      })
+
+      // Učitavanje javnog ključa primaoca.
+      const recipientPublicKey = await importPublicKeySpki(
+        base64ToBytes(recipientPublicKeySpki)
+      )
+
+      // Omotavanje DEK-a javnim ključem primaoca.
+      const recipientWrappedDek = await cryptoWrapDekForRecipient(
+        recipientPublicKey,
+        dek
+      )
+
+      return bytesToBase64(recipientWrappedDek)
+    },
+    [kek, unlocked]
+  )
+
+  /**
    * Odmotavanje DEK-a za trenutnog korisnika.
    */
   const unwrapSharedDek = useCallback(
@@ -417,6 +458,7 @@ export function VaultProvider({ children }) {
     encryptSecret,
     decryptSecret,
     wrapDekForRecipient,
+    prepareSecretForSharing,
     unwrapSharedDek,
     decryptSharedSecret,
   }

@@ -1,4 +1,4 @@
-// User-related API client (public keys, key material).
+// User-related API client (public keys, key material and developers).
 import { authenticatedFetch, readJson } from './api.js'
 
 const BASE = '/users'
@@ -29,6 +29,13 @@ export async function getPublicKey(userId) {
   const res = await authenticatedFetch(
     `${BASE}/${encodeURIComponent(userId)}/public-key`
   )
+
+  return readJson(res)
+}
+
+/** Fetch active developers who have registered public keys. */
+export async function listDevelopers() {
+  const res = await authenticatedFetch(`${BASE}/developers`)
 
   return readJson(res)
 }
