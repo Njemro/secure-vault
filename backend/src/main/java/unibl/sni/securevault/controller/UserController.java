@@ -25,6 +25,7 @@ import unibl.sni.securevault.exception.ResourceNotFoundException;
 import unibl.sni.securevault.service.AuditLogService;
 import unibl.sni.securevault.service.UserKeyService;
 import unibl.sni.securevault.service.UserService;
+import unibl.sni.securevault.service.KeycloakAdminService;
 
 import java.util.List;
 import java.util.UUID;
@@ -36,14 +37,17 @@ public class UserController {
     private final UserService userService;
     private final UserKeyService userKeyService;
     private final AuditLogService auditLogService;
+    private final KeycloakAdminService keycloakAdminService;
 
     public UserController(
             UserService userService,
             UserKeyService userKeyService,
-            AuditLogService auditLogService) {
+            AuditLogService auditLogService,
+            KeycloakAdminService keycloakAdminService) {
         this.userService = userService;
         this.userKeyService = userKeyService;
         this.auditLogService = auditLogService;
+        this.keycloakAdminService = keycloakAdminService;
     }
 
     @GetMapping("/{id}/public-key")
@@ -146,6 +150,15 @@ public class UserController {
         return ResponseEntity.ok(users);
     }
 
+    // ADMIN: detalji korisničkog naloga
+    @GetMapping("/{id}")
+    public ResponseEntity<AdminUserResponse> getUserDetails(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID id) {
+        requireAdmin(jwt);
+        return ResponseEntity.ok(AdminUserResponse.from(userService.getById(id)));
+    }
+
     // ADMIN: promjena korisničke uloge
     @PutMapping("/{id}/role")
     public ResponseEntity<AdminUserResponse> updateUserRole(
@@ -155,17 +168,30 @@ public class UserController {
 
         User current = requireAdmin(jwt);
 
-        User updated = userService.changeUserRole(
-                id,
-                request.role(),
-                current);
+        User target = userService.getById(id);
+        if (target.getId().equals(current.getId()) && request.role() != Role.ADMIN) {
+            throw new AccessDeniedException("Admin cannot remove their own ADMIN role.");
+        }
 
-        auditLogService.record(
-                current,
-                "USER_ROLE_UPDATE",
-                "USER",
-                id.toString(),
-                "{\"role\":\"" + request.role().name() + "\"}");
+        Role previousKeycloakRole = keycloakAdminService.replaceApplicationRole(
+                target.getKeycloakId(), request.role());
+        User updated;
+        try {
+            // Opoziv svih sesija mora uspjeti prije nego promjenu potvrdimo lokalno.
+            keycloakAdminService.logoutUser(target.getKeycloakId());
+            updated = userService.changeUserRole(id, request.role(), current);
+        } catch (RuntimeException error) {
+            try {
+                keycloakAdminService.replaceApplicationRole(
+                        target.getKeycloakId(), previousKeycloakRole);
+            } catch (RuntimeException rollbackError) {
+                error.addSuppressed(rollbackError);
+            }
+            throw error;
+        }
+
+        auditLogService.record(current, "USER_ROLE_UPDATE", "USER", id.toString(),
+        "{\"previousRole\":\"" + previousKeycloakRole.name() + "\",\"newRole\":\"" + request.role().name() + "\"}");
 
         return ResponseEntity.ok(AdminUserResponse.from(updated));
     }
@@ -179,10 +205,29 @@ public class UserController {
 
         User current = requireAdmin(jwt);
 
-        User updated = userService.changeUserStatus(
-                id,
-                request.status(),
-                current);
+        User target = userService.getById(id);
+        if (target.getId().equals(current.getId())
+                && request.status() != unibl.sni.securevault.entity.UserStatus.ACTIVE) {
+            throw new AccessDeniedException("Admin cannot suspend or disable their own account.");
+        }
+        if (target.getStatus() == request.status()) {
+            return ResponseEntity.ok(AdminUserResponse.from(target));
+        }
+        boolean enabled = request.status() == unibl.sni.securevault.entity.UserStatus.ACTIVE;
+        keycloakAdminService.setUserEnabled(target.getKeycloakId(), enabled);
+        User updated;
+        try {
+            keycloakAdminService.logoutUser(target.getKeycloakId());
+            updated = userService.changeUserStatus(id, request.status(), current);
+        } catch (RuntimeException error) {
+            try {
+                keycloakAdminService.setUserEnabled(target.getKeycloakId(),
+                        target.getStatus() == unibl.sni.securevault.entity.UserStatus.ACTIVE);
+            } catch (RuntimeException rollbackError) {
+                error.addSuppressed(rollbackError);
+            }
+            throw error;
+        }
 
         auditLogService.record(
                 current,

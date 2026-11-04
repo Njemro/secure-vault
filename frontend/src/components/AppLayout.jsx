@@ -7,12 +7,13 @@ const navItems = [
   { label: 'Dashboard', to: '/dashboard', end: true },
   { label: 'My Secrets', to: '/secrets', end: true },
   { label: 'Shared With Me', to: '/shared', end: true },
-  { label: 'Security Settings', to: '/security', end: true },
 ]
 
 function AppLayout() {
   const { user, signOut } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
+  
+  const isAdmin = user?.realm_access?.roles?.includes('ADMIN') === true
 
 async function handleLogout() {
   await signOut()
@@ -61,6 +62,36 @@ async function handleLogout() {
               {item.label}
             </NavLink>
           ))}
+
+          {isAdmin && (
+            <NavLink
+              to="/admin/users"
+              end
+              className={({ isActive }) =>
+                isActive
+                  ? 'app-nav__link app-nav__link--active'
+                  : 'app-nav__link'
+              }
+              onClick={() => setMenuOpen(false)}
+            >
+              Manage Users
+            </NavLink>
+          )}
+
+          {isAdmin && (
+            <NavLink
+              to="/admin/security-policies"
+              end
+              className={({ isActive }) =>
+                isActive
+                  ? 'app-nav__link app-nav__link--active'
+                  : 'app-nav__link'
+              }
+              onClick={() => setMenuOpen(false)}
+            >
+              Security Policies
+            </NavLink>
+    )}
 
           <button
             type="button"

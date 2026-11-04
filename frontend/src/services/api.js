@@ -1,9 +1,14 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
 
 let accessTokenProvider = null
+let sessionExpiredHandler = null
 
 export function setAccessTokenProvider(provider) {
   accessTokenProvider = provider
+}
+
+export function setSessionExpiredHandler(handler) {
+  sessionExpiredHandler = handler
 }
 
 export async function authenticatedFetch(path, options = {}) {
@@ -13,7 +18,6 @@ export async function authenticatedFetch(path, options = {}) {
     headers.set('Content-Type', 'application/json')
   }
 
-  // Automatski pribavi svjež token za zaštićene zahtjeve.
   let token = null
 
   if (options.auth !== false) {
@@ -40,7 +44,7 @@ export async function authenticatedFetch(path, options = {}) {
   delete fetchOptions.token
   delete fetchOptions.auth
 
-  const response = await fetch(
+  return fetch(
     path.startsWith('http') ? path : `${API_BASE}${path}`,
     {
       ...fetchOptions,
@@ -51,24 +55,40 @@ export async function authenticatedFetch(path, options = {}) {
           : options.body,
     },
   )
-
-  return response
 }
 
 export async function readJson(response) {
   if (!response.ok) {
     const text = await response.text()
     let message = text || `HTTP ${response.status}`
+    let parsed = null
 
     try {
-      const parsed = JSON.parse(text)
-      message = parsed.message || parsed.error || parsed.detail || message
+      parsed = JSON.parse(text)
+      message =
+        parsed.message ||
+        parsed.error ||
+        parsed.detail ||
+        message
     } catch {
       // Odgovor nije JSON.
     }
 
     const error = new Error(message)
     error.status = response.status
+    error.code = parsed?.code || null
+
+    if (
+      (
+        (response.status === 401 &&
+          (error.code === 'SESSION_INACTIVE' || error.code === 'SESSION_MAX_DURATION')) ||
+        (response.status === 403 &&
+          (error.code === 'ACCOUNT_SUSPENDED' || error.code === 'ACCOUNT_DISABLED' || error.code === 'ROLE_CHANGED'))
+      )
+    ) {
+      sessionExpiredHandler?.(error.code)
+    }
+
     throw error
   }
 

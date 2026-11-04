@@ -68,4 +68,18 @@ public class SecurityPolicy {
     public int getMaxSessionDurationMinutes() { return maxSessionDurationMinutes; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
+
+    // Kompatibilnost sa starim testovima i pozivima.
+    public SecurityPolicy(
+            int minMasterPasswordLength,
+            int secretRotationIntervalDays,
+            int sessionDurationMinutes
+    ) {
+        this(
+                minMasterPasswordLength,
+                secretRotationIntervalDays,
+                sessionDurationMinutes,
+                600
+        );
+    }
 }

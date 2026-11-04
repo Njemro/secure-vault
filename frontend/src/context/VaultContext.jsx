@@ -53,6 +53,24 @@ export function VaultProvider({ children }) {
     setUnlocked(false)
   }, [])
 
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      clearVault()
+    }
+
+    window.addEventListener(
+      'secure-vault:session-expired',
+      handleSessionExpired,
+    )
+
+    return () => {
+      window.removeEventListener(
+        'secure-vault:session-expired',
+        handleSessionExpired,
+      )
+    }
+  }, [clearVault])
+
   // Briše samo materijal za otključavanje, a čuva podatke o trezoru.
   const clearUnlockedMaterial = useCallback(() => {
     setKek(null)

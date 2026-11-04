@@ -39,3 +39,24 @@ export async function listDevelopers() {
 
   return readJson(res)
 }
+/** Admin: list all registered user accounts. */
+export async function listAdminUsers() {
+  const res = await authenticatedFetch(`${BASE}`)
+  return readJson(res)
+}
+export async function getAdminUser(userId) {
+  const res = await authenticatedFetch(`${BASE}/${encodeURIComponent(userId)}`)
+  return readJson(res)
+}
+export async function updateAdminUserRole(userId, role) {
+  const res = await authenticatedFetch(`${BASE}/${encodeURIComponent(userId)}/role`, {
+    method: 'PUT', body: { role },
+  })
+  return readJson(res)
+}
+export async function updateAdminUserStatus(userId, status) {
+  const res = await authenticatedFetch(`${BASE}/${encodeURIComponent(userId)}/status`, {
+    method: 'PUT', body: { status },
+  })
+  return readJson(res)
+}

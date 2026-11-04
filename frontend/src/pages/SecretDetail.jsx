@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useVault } from '../context/VaultContext.jsx'
+import { getSecurityPolicy } from '../services/securityPolicyApi.js'
+import { getSecretRotationInfo, formatRotationDate } from '../utils/secretRotation.js'
 import {
   getSecret,
   deleteSecret,
@@ -13,6 +15,7 @@ export default function SecretDetail() {
   const { unlocked, unlock, decryptSecret } = useVault()
 
   const [secret, setSecret] = useState(null)
+  const [rotationIntervalDays, setRotationIntervalDays] = useState(null)
   const [masterPassword, setMasterPassword] = useState('')
 
   const [decryptedValue, setDecryptedValue] = useState('')
@@ -35,10 +38,11 @@ export default function SecretDetail() {
       setError('')
 
       try {
-        const data = await getSecret(id)
+        const [data, policy] = await Promise.all([getSecret(id), getSecurityPolicy()])
 
         if (!cancelled) {
           setSecret(data)
+          setRotationIntervalDays(policy.secretRotationIntervalDays)
         }
       } catch (err) {
         if (!cancelled) {
@@ -145,6 +149,22 @@ export default function SecretDetail() {
       {secret.description && (
         <p>{secret.description}</p>
       )}
+
+      {rotationIntervalDays != null && (() => {
+        const rotation = getSecretRotationInfo(secret, rotationIntervalDays)
+        return (
+          <section aria-live="polite" style={{ padding: '12px', margin: '12px 0', border: '1px solid #ccc', borderRadius: '8px' }}>
+            <strong>Rotacija tajne: </strong>
+            {rotation.status === 'overdue' ? (
+              <span style={{ color: '#b91c1c' }}>Rok je istekao. Potrebno je promijeniti sadržaj tajne.</span>
+            ) : rotation.status === 'due-soon' ? (
+              <span style={{ color: '#b45309' }}>Rok ističe za {rotation.daysRemaining} dana ({formatRotationDate(rotation.dueAt)}).</span>
+            ) : rotation.status === 'active' ? (
+              <span>Sljedeća rotacija do {formatRotationDate(rotation.dueAt)}.</span>
+            ) : 'Nije moguće odrediti rok.'}
+          </section>
+        )
+      })()}
 
       <p>
         <strong>Algoritam:</strong>{' '}

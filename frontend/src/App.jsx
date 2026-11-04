@@ -5,6 +5,7 @@ import AppLayout from './components/AppLayout.jsx'
 import {
   RequireSetupKeys,
   RequireUnlockedVault,
+  RequireAdmin,
 } from './components/VaultRouteGuards.jsx'
 
 import Login from './pages/Login'
@@ -14,11 +15,12 @@ import UnlockVault from './pages/UnlockVault'
 import Dashboard from './pages/Dashboard'
 import MySecrets from './pages/MySecrets'
 import SharedWithMe from './pages/SharedWithMe'
-import SecuritySettings from './pages/SecuritySettings'
 import NotFound from './pages/NotFound'
 import CreateSecret from './pages/CreateSecret.jsx'
 import EditSecret from './pages/EditSecret.jsx'
 import SecretDetail from './pages/SecretDetail.jsx'
+import AdminSecurityPolicies from './pages/AdminSecurityPolicies.jsx'
+import AdminUsers from './pages/AdminUsers.jsx'
 
 function RequireAuth({ children }) {
   const { authenticated } = useAuth()
@@ -74,7 +76,18 @@ export default function App() {
         <Route path="/secrets/:id" element={<SecretDetail />} />
         <Route path="/secrets/:id/edit" element={<EditSecret />} />
         <Route path="/shared" element={<SharedWithMe />} />
-        <Route path="/security" element={<SecuritySettings />} />
+        <Route path="/admin/security-policies" element={
+          <RequireAdmin>
+            <AdminSecurityPolicies />
+          </RequireAdmin>
+        }
+        />
+        <Route path="/admin/users" element={
+          <RequireAdmin>
+            <AdminUsers />
+          </RequireAdmin>
+        } />
+
       </Route>
 
       <Route path="*" element={<NotFound />} />

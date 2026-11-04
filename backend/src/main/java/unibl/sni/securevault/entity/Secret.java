@@ -136,6 +136,8 @@ public class Secret {
     public void updateEncryptedContent(String name, String description, byte[] encryptedValue,
                                        byte[] encryptedDek, byte[] contentIv, byte[] dekIv,
                                        String encryptionAlgorithm) {
+        boolean contentChanged = !java.util.Arrays.equals(this.encryptedValue, encryptedValue)
+                || !java.util.Arrays.equals(this.contentIv, contentIv);
         this.name = name;
         this.description = description;
         this.encryptedValue = encryptedValue;
@@ -143,6 +145,8 @@ public class Secret {
         this.contentIv = contentIv;
         this.dekIv = dekIv;
         this.encryptionAlgorithm = encryptionAlgorithm;
-        this.lastRotatedAt = LocalDateTime.now();
+        if (contentChanged) {
+            this.lastRotatedAt = LocalDateTime.now();
+        }
     }
 }

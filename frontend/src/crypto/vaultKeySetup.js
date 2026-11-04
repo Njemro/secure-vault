@@ -16,9 +16,9 @@ import {
  *
  * Master lozinka se ne šalje backendu.
  */
-export async function createVaultKeyMaterial(masterPassword) {
-  if (typeof masterPassword !== 'string' || masterPassword.length < 12) {
-    throw new Error('Master lozinka mora imati najmanje 12 znakova.')
+export async function createVaultKeyMaterial(masterPassword, minLength = 12,){
+  if (typeof masterPassword !== 'string' || masterPassword.length < minLength) {
+    throw new Error(`Master password must be at least ${minLength} characters.`)
   }
 
   const salt = generateSalt()

@@ -1,15 +1,19 @@
-
 import {
   createContext,
   useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
+
 import keycloak from '../auth/keycloak'
 
-import { setAccessTokenProvider } from '../services/api'
+import {
+  setAccessTokenProvider,
+  setSessionExpiredHandler,
+} from '../services/api'
 
 const AuthContext = createContext(null)
 
@@ -20,20 +24,43 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(keycloak.token || null)
   const [user, setUser] = useState(keycloak.tokenParsed || null)
 
+  const sessionEnding = useRef(false)
+
   const syncSession = useCallback(() => {
     setAuthenticated(Boolean(keycloak.authenticated))
     setToken(keycloak.token || null)
     setUser(keycloak.tokenParsed || null)
   }, [])
 
-  const handleSessionExpired = useCallback(() => {
+  const handleSessionExpired = useCallback(async (reason = 'session-expired') => {
+    if (sessionEnding.current) {
+      return
+    }
+  
+    sessionEnding.current = true
+  
     setAuthenticated(false)
     setToken(null)
     setUser(null)
-    
-    // Potpuno učitavanje stranice uklanja osjetljive podatke
-    // koji su ostali u memoriji aplikacije, uključujući Vault ključeve.
-    window.location.replace('/login?reason=session-expired')
+  
+    window.dispatchEvent(
+      new CustomEvent('secure-vault:session-expired', {
+        detail: { reason },
+      }),
+    )
+  
+    const redirectUri = `${window.location.origin}/login`
+  
+    try {
+      if (keycloak.authenticated) {
+        await keycloak.logout({ redirectUri })
+      } else {
+        window.location.replace(redirectUri)
+      }
+    } catch (error) {
+      console.error('Keycloak logout failed:', error)
+      window.location.replace(redirectUri)
+    }
   }, [])
 
   useEffect(() => {
@@ -47,7 +74,7 @@ export function AuthProvider({ children }) {
         syncSession()
       } catch (error) {
         console.error('Token refresh failed:', error)
-        handleSessionExpired()
+        handleSessionExpired('session-expired')
       }
     }
 
@@ -60,21 +87,29 @@ export function AuthProvider({ children }) {
   }, [syncSession, handleSessionExpired])
 
   const signIn = useCallback(async () => {
+    sessionEnding.current = false
+
     await keycloak.login({
       redirectUri: `${window.location.origin}/dashboard`,
     })
   }, [])
 
   const signOut = useCallback(async () => {
+    sessionEnding.current = true
+    window.dispatchEvent(
+      new CustomEvent('secure-vault:session-expired', {
+        detail: { reason: 'logout' },
+      }),
+    )
+
     await keycloak.logout({
       redirectUri: `${window.location.origin}/login`,
     })
   }, [])
 
-
   const getAccessToken = useCallback(async () => {
     if (!keycloak.authenticated) {
-      handleSessionExpired()
+      await handleSessionExpired('session-expired')
       return null
     }
 
@@ -82,7 +117,7 @@ export function AuthProvider({ children }) {
       await keycloak.updateToken(30)
 
       if (!keycloak.authenticated || !keycloak.token) {
-        handleSessionExpired()
+        await handleSessionExpired('session-expired')
         return null
       }
 
@@ -90,18 +125,20 @@ export function AuthProvider({ children }) {
       return keycloak.token
     } catch (error) {
       console.error('Token refresh failed:', error)
-      handleSessionExpired()
+      await handleSessionExpired('session-expired')
       return null
     }
   }, [syncSession, handleSessionExpired])
 
   useEffect(() => {
     setAccessTokenProvider(getAccessToken)
+    setSessionExpiredHandler(handleSessionExpired)
 
     return () => {
       setAccessTokenProvider(null)
+      setSessionExpiredHandler(null)
     }
-  }, [getAccessToken])
+  }, [getAccessToken, handleSessionExpired])
 
   const value = useMemo(
     () => ({
@@ -115,7 +152,11 @@ export function AuthProvider({ children }) {
     [authenticated, token, user, signIn, signOut, getAccessToken],
   )
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  )
 }
 
 export function useAuth() {

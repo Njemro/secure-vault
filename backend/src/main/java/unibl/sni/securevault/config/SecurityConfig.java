@@ -1,4 +1,3 @@
-
 package unibl.sni.securevault.config;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -16,28 +15,39 @@ import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthen
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
+import unibl.sni.securevault.security.SessionEnforcementFilter;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
+
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
 
-    @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/register").permitAll()
-                .anyRequest().authenticated()
-            )
-            .sessionManagement(session -> session
-                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-            )
-            .csrf(csrf -> csrf.disable())
-            .oauth2ResourceServer(oauth2 ->
-                oauth2.jwt(Customizer.withDefaults())
-            )
-            .exceptionHandling(ex -> ex
-                .authenticationEntryPoint(bearerTokenAuthenticationEntryPoint())
-            );
+   @Bean
+    SecurityFilterChain securityFilterChain(
+            HttpSecurity http,
+            SessionEnforcementFilter sessionEnforcementFilter
+    ) throws Exception {
+
+        http.authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/api/auth/register").permitAll()
+                        .anyRequest().authenticated()
+                )
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                )
+                .csrf(csrf -> csrf.disable())
+                .oauth2ResourceServer(oauth2 ->
+                        oauth2.jwt(Customizer.withDefaults())
+                )
+                .exceptionHandling(ex ->
+                        ex.authenticationEntryPoint(bearerTokenAuthenticationEntryPoint())
+                )
+                .addFilterAfter(
+                        sessionEnforcementFilter,
+                        BearerTokenAuthenticationFilter.class
+                );
 
         return http.build();
     }
@@ -61,5 +71,16 @@ public class SecurityConfig {
         }
 
         return JwtDecoders.fromIssuerLocation(issuerUri);
+    }
+
+    @Bean
+    FilterRegistrationBean<SessionEnforcementFilter> disableSessionFilterServletRegistration(
+            SessionEnforcementFilter filter
+    ) {
+        FilterRegistrationBean<SessionEnforcementFilter> registration =
+                new FilterRegistrationBean<>(filter);
+    
+        registration.setEnabled(false);
+        return registration;
     }
 }

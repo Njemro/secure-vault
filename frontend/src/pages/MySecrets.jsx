@@ -7,6 +7,8 @@ import {
   getSecret,
   shareSecret,
 } from '../services/secretsApi.js'
+import { getSecurityPolicy } from '../services/securityPolicyApi.js'
+import { getSecretRotationInfo, formatRotationDate } from '../utils/secretRotation.js'
 import {
   listDevelopers,
   getPublicKey,
@@ -19,6 +21,7 @@ export default function MySecrets() {
   const [secrets, setSecrets] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [rotationIntervalDays, setRotationIntervalDays] = useState(null)
 
   const [sharingSecret, setSharingSecret] = useState(null)
   const [developers, setDevelopers] = useState([])
@@ -45,10 +48,11 @@ export default function MySecrets() {
       setError('')
 
       try {
-        const data = await listSecrets()
+        const [data, policy] = await Promise.all([listSecrets(), getSecurityPolicy()])
 
         if (!cancelled) {
           setSecrets(Array.isArray(data) ? data : [])
+          setRotationIntervalDays(policy.secretRotationIntervalDays)
         }
       } catch (err) {
         if (!cancelled) {
@@ -210,6 +214,22 @@ export default function MySecrets() {
                   </small>
 
                   <br />
+
+                  {rotationIntervalDays != null && (() => {
+                    const rotation = getSecretRotationInfo(secret, rotationIntervalDays)
+                    return (
+                      <p style={{ marginTop: '8px' }}>
+                        <strong>Rotacija: </strong>
+                        {rotation.status === 'overdue' ? (
+                          <span style={{ color: '#b91c1c' }}>Potrebna rotacija — rok istekao</span>
+                        ) : rotation.status === 'due-soon' ? (
+                          <span style={{ color: '#b45309' }}>Uskoro potrebna rotacija — {rotation.daysRemaining} dana</span>
+                        ) : rotation.status === 'active' ? (
+                          <span style={{ color: '#15803d' }}>Aktivna — do {formatRotationDate(rotation.dueAt)}</span>
+                        ) : 'Nije moguće odrediti rok'}
+                      </p>
+                    )
+                  })()}
 
                   <small>
                     Kreirano:{' '}

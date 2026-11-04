@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 
 import { useAuth } from '../context/AuthContext.jsx'
 import { useVault } from '../context/VaultContext.jsx'
 import { registerKeys } from '../services/usersApi.js'
 import { createVaultKeyMaterial } from '../crypto/vaultKeySetup.js'
+
+import { getSecurityPolicy } from '../services/securityPolicyApi.js'
 
 import './SetupKeys.css'
 
@@ -18,6 +20,43 @@ export default function SetupKeys() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  const [minMasterPasswordLength, setMinMasterPasswordLength] = useState(null)
+  const [policyLoading, setPolicyLoading] = useState(true)
+  const [policyError, setPolicyError] = useState('')
+
+  useEffect(() => {
+    if (!authenticated) return
+    
+    let active = true
+    
+    async function loadPolicy() {
+      try {
+        setPolicyLoading(true)
+        setPolicyError('')
+      
+        const policy = await getSecurityPolicy()
+      
+        if (active) {
+          setMinMasterPasswordLength(policy.minMasterPasswordLength)
+        }
+      } catch (err) {
+        if (active) {
+          setPolicyError(
+            err.message || 'Nije moguće učitati sigurnosnu politiku.',
+          )
+        }
+      } finally {
+        if (active) setPolicyLoading(false)
+      }
+    }
+  
+    loadPolicy()
+  
+    return () => {
+      active = false
+    }
+  }, [authenticated])
+  
   if (!authenticated) {
     return <Navigate to="/login" replace />
   }
@@ -29,8 +68,15 @@ export default function SetupKeys() {
 
     setError('')
 
-    if (masterPassword.length < 12) {
-      setError('Master lozinka mora imati najmanje 12 znakova.')
+    if (policyLoading || minMasterPasswordLength === null) {
+      setError('Sigurnosna politika još nije učitana.')
+      return
+    }
+
+    if (masterPassword.length < minMasterPasswordLength) {
+      setError(
+        `Master lozinka mora imati najmanje ${minMasterPasswordLength} znakova.`,
+      )
       return
     }
 
@@ -39,10 +85,13 @@ export default function SetupKeys() {
       return
     }
 
-    setLoading(true)
-
     try {
-      const keyMaterial = await createVaultKeyMaterial(masterPassword)
+      setLoading(true)
+
+      const keyMaterial = await createVaultKeyMaterial(
+        masterPassword,
+        minMasterPasswordLength,
+      )
 
       await registerKeys(keyMaterial)
 
@@ -69,7 +118,7 @@ export default function SetupKeys() {
         <h1>Zaštiti svoj trezor</h1>
 
         <p>
-          Postavi master lozinku (najmanje 12 znakova).
+          Postavi master lozinku (najmanje {minMasterPasswordLength ?? "..."} znakova).
           Ona se koristi u tvom browseru za šifrovanje
           privatnog ključa i ne šalje se serveru.
         </p>
@@ -83,13 +132,13 @@ export default function SetupKeys() {
             id="masterPassword"
             type="password"
             autoComplete="new-password"
-            minLength={12}
+            minLength={minMasterPasswordLength ?? undefined}
             value={masterPassword}
             onChange={(event) =>
               setMasterPassword(event.target.value)
             }
             required
-            disabled={loading}
+            disabled={loading || policyLoading || minMasterPasswordLength === null}
           />
 
           <label htmlFor="confirmPassword">
@@ -100,13 +149,13 @@ export default function SetupKeys() {
             id="confirmPassword"
             type="password"
             autoComplete="new-password"
-            minLength={12}
+            minLength={minMasterPasswordLength ?? undefined}
             value={confirmPassword}
             onChange={(event) =>
               setConfirmPassword(event.target.value)
             }
             required
-            disabled={loading}
+            disabled={loading || policyLoading || minMasterPasswordLength === null}
           />
 
           {error && (
@@ -122,7 +171,13 @@ export default function SetupKeys() {
             </p>
           )}
 
-          <button type="submit" disabled={loading}>
+          {policyLoading && <p>Učitavanje sigurnosnih pravila...</p>}
+
+          {policyError && (
+            <p className="error-message">{policyError}</p>
+          )}
+
+          <button type="submit" disabled={policyLoading || minMasterPasswordLength === null || loading}>
             {loading
               ? 'Kreiranje ključeva...'
               : 'Kreiraj ključeve trezora'}

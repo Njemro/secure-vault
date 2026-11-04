@@ -1,6 +1,8 @@
 import { Navigate } from 'react-router-dom'
 import { useVault } from '../context/VaultContext.jsx'
 
+import { useAuth } from '../context/AuthContext.jsx'
+
 function VaultLoading() {
   return (
     <main className="unlock-vault-page">
@@ -67,6 +69,23 @@ export function RequireSetupKeys({ children }) {
   }
 
   if (status === 'unlocked') {
+    return <Navigate to="/dashboard" replace />
+  }
+
+  return children
+}
+
+export function RequireAdmin({ children }) {
+  const { authenticated, user } = useAuth()
+
+  const isAdmin =
+    user?.realm_access?.roles?.includes('ADMIN') === true
+
+  if (!authenticated) {
+    return <Navigate to="/login" replace />
+  }
+
+  if (!isAdmin) {
     return <Navigate to="/dashboard" replace />
   }
 

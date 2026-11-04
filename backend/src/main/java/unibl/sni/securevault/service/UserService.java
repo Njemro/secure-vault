@@ -35,6 +35,11 @@ public class UserService {
     }
 
     @Transactional(readOnly = true)
+    public Optional<UserStatus> findStatusByKeycloakId(String keycloakId) {
+        return userRepository.findByKeycloakId(keycloakId).map(User::getStatus);
+    }
+
+    @Transactional(readOnly = true)
     public Optional<User> findByUsername(String username) {
         if (username == null || username.isBlank()) {
             throw new InvalidOperationRequestException(
