@@ -16,6 +16,9 @@ import unibl.sni.securevault.exception.InvalidOperationRequestException;
 import unibl.sni.securevault.repository.UserRepository;
 import unibl.sni.securevault.service.KeycloakAdminService;
 
+import org.springframework.transaction.annotation.Transactional;
+import unibl.sni.securevault.service.HoneypotSecretService;
+
 import java.util.UUID;
 
 /**
@@ -35,11 +38,16 @@ public class RegistrationController {
 
     private final KeycloakAdminService keycloakAdminService;
     private final UserRepository userRepository;
+    private final HoneypotSecretService honeypotSecretService;
 
-    public RegistrationController(KeycloakAdminService keycloakAdminService,
-                                  UserRepository userRepository) {
+    public RegistrationController(
+            KeycloakAdminService keycloakAdminService,
+            UserRepository userRepository,
+            HoneypotSecretService honeypotSecretService) {
+
         this.keycloakAdminService = keycloakAdminService;
         this.userRepository = userRepository;
+        this.honeypotSecretService = honeypotSecretService;
     }
 
     /**
@@ -47,6 +55,7 @@ public class RegistrationController {
      * local user record. Returns the Keycloak user id and username on success.
      * <p>Unauthenticated access is permitted (see SecurityConfig).
      */
+    @Transactional
     @PostMapping("/register")
     public ResponseEntity<RegisterResponse> register(@Valid @RequestBody RegisterRequest request) {
         if (userRepository.findByUsername(request.username()).isPresent()) {
@@ -63,7 +72,11 @@ public class RegistrationController {
 
         try {
             User user = new User(keycloakId, request.username(), Role.DEVELOPER, UserStatus.ACTIVE);
-            userRepository.save(user);
+            
+            User savedUser = userRepository.save(user);
+
+            // Kreiranje zasebnog honeypot zapisa za novog korisnika.
+            honeypotSecretService.ensureHoneypotExists(savedUser);
         } catch (Exception e) {
             // Local provisioning failed after Keycloak creation: roll back the
             // Keycloak user so no orphaned account remains.
@@ -75,4 +88,6 @@ public class RegistrationController {
                 .body(new RegisterResponse(keycloakId, request.username(),
                         "Registration complete. Log in to Keycloak, then set up your encryption keys."));
     }
+
+
 }

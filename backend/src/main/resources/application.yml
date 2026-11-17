@@ -1,6 +1,6 @@
 spring:
   config:
-    import: "optional:file:../.env[.properties]"
+    import: "optional:file:./.env[.properties],optional:file:../.env[.properties]"
   application:
     name: secure-vault-backend
   datasource:
@@ -36,4 +36,7 @@ keycloak:
     client-secret: ${KEYCLOAK_ADMIN_CLIENT_SECRET:}
 
 server:
+  # The browser must enter through the Gateway (localhost:8000), never call
+  # the resource server directly. Override only for a private container network.
+  address: 127.0.0.1
   port: 8081

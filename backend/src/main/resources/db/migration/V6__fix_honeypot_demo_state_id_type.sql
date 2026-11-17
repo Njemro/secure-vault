@@ -1,0 +1,1 @@
+ALTER TABLE honeypot_demo_state MODIFY COLUMN id INT NOT NULL;

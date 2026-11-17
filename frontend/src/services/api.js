@@ -1,56 +1,50 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
 
-let accessTokenProvider = null
-let sessionExpiredHandler = null
 
-export function setAccessTokenProvider(provider) {
-  accessTokenProvider = provider
-}
-
-export function setSessionExpiredHandler(handler) {
-  sessionExpiredHandler = handler
+async function getCsrfToken() {
+  const response = await fetch('/auth/csrf', {
+    method: 'GET',
+    credentials: 'same-origin',
+    cache: 'no-store',
+    headers: { Accept: 'application/json' },
+  })
+  if (!response.ok) throw new Error('Nije moguće dobiti CSRF token.')
+  const csrf = await response.json()
+  if (!csrf?.token || !csrf?.headerName) {
+    throw new Error('CSRF token nije ispravan.')
+  }
+  return csrf
 }
 
 export async function authenticatedFetch(path, options = {}) {
   const headers = new Headers(options.headers || {})
+  const method = (options.method || 'GET').toUpperCase()
 
   if (options.body && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json')
   }
 
-  let token = null
-
-  if (options.auth !== false) {
-    if (accessTokenProvider) {
-      token = await accessTokenProvider()
-
-      if (!token) {
-        throw new Error('Sesija je istekla. Prijavi se ponovo.')
-      }
-    } else if (options.token) {
-      token = options.token
-    } else {
-      throw new Error('Access token provider nije konfigurisan.')
-    }
-  }
-
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`)
-  } else {
-    headers.delete('Authorization')
+  if (!['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(method)) {
+    // CSRF token is kept in memory and returned as JSON; the session cookie
+    // itself remains HttpOnly, Secure and SameSite=Strict.
+    const csrf = await getCsrfToken()
+    headers.set(csrf.headerName, csrf.token)
   }
 
   const fetchOptions = { ...options }
-  delete fetchOptions.token
   delete fetchOptions.auth
+  delete fetchOptions.token
 
   return fetch(
     path.startsWith('http') ? path : `${API_BASE}${path}`,
     {
       ...fetchOptions,
+      method,
+      credentials: 'same-origin',
+      cache: options.cache || 'no-store',
       headers,
       body:
-        options.body && typeof options.body !== 'string'
+        options.body && typeof options.body !== 'string' && !(options.body instanceof FormData)
           ? JSON.stringify(options.body)
           : options.body,
     },
@@ -65,43 +59,29 @@ export async function readJson(response) {
 
     try {
       parsed = JSON.parse(text)
-      message =
-        parsed.message ||
-        parsed.error ||
-        parsed.detail ||
-        message
+      message = parsed.message || parsed.error || parsed.detail || message
     } catch {
-      // Odgovor nije JSON.
+      // Non-JSON response.
     }
 
     const error = new Error(message)
     error.status = response.status
-    error.code = parsed?.code || null
+    error.code = parsed?.code || response.headers.get('X-SecureVault-Block-Reason') || null
 
-    if (
-      (
-        (response.status === 401 &&
-          (error.code === 'SESSION_INACTIVE' || error.code === 'SESSION_MAX_DURATION')) ||
-        (response.status === 403 &&
-          (error.code === 'ACCOUNT_SUSPENDED' || error.code === 'ACCOUNT_DISABLED' || error.code === 'ROLE_CHANGED'))
-      )
-    ) {
-      sessionExpiredHandler?.(error.code)
+    if (response.status === 401 ||
+        (response.status === 403 && ['ACCOUNT_SUSPENDED', 'ACCOUNT_DISABLED', 'ROLE_CHANGED'].includes(error.code))) {
+      window.dispatchEvent(new CustomEvent('secure-vault:session-expired', {
+        detail: { reason: error.code || 'session-expired' },
+      }))
     }
 
     throw error
   }
 
-  if (response.status === 204) {
-    return null
-  }
+  if (response.status === 204) return null
 
   const contentType = response.headers.get('content-type') || ''
-
-  if (contentType.includes('application/json')) {
-    return response.json()
-  }
-
+  if (contentType.includes('application/json')) return response.json()
   return response.text()
 }
 
@@ -110,7 +90,7 @@ export async function request(path, options = {}) {
   return readJson(response)
 }
 
-// Javni endpoint - registracija.
+// Public registration endpoint; CSRF is still required by the BFF.
 export function register({ username, email, keycloakPassword }) {
   return request('/auth/register', {
     method: 'POST',
@@ -119,22 +99,26 @@ export function register({ username, email, keycloakPassword }) {
   })
 }
 
-// Zaštićeni endpointi.
 export function registerKeys(keyData) {
-  return request('/users/keys', {
-    method: 'PUT',
-    body: keyData,
-  })
+  return request('/users/keys', { method: 'PUT', body: keyData })
 }
 
 export function getMyKeys() {
-  return request('/users/me/keys', {
-    method: 'GET',
-  })
+  return request('/users/me/keys', { method: 'GET' })
 }
 
 export function getPublicKey(userId) {
-  return request(`/users/${encodeURIComponent(userId)}/public-key`, {
-    method: 'GET',
-  })
+  return request(`/users/${encodeURIComponent(userId)}/public-key`, { method: 'GET' })
+}
+
+export async function reportDecryptionFailure() {
+  try {
+    await request('/security-events/decryption-failure', {
+      method: 'POST',
+      body: { reason: 'CLIENT_SIDE_DECRYPTION_FAILED' },
+    })
+  } catch (error) {
+    // Reporting must never replace the original decryption error shown to user.
+    console.warn('Could not report decryption failure:', error)
+  }
 }

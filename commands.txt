@@ -1,0 +1,98 @@
+Token refresh interval script - Iz root direktorijuma projekta git bash (here):
+./scripts/set-keycloak-access-token-lifespan.sh
+
+
+Rate limiting:
+
+const results = await Promise.all(
+  Array.from({ length: 30 }, async (_, i) => {
+    const response = await fetch("/api/users", {
+      method: "GET",
+      credentials: "include"
+    });
+
+    return {
+      request: i + 1,
+      status: response.status
+    };
+  })
+);
+
+console.table(results);
+
+console.log(
+  "429 odgovori:",
+  results.filter(r => r.status === 429).length
+);
+
+
+SQL Injection:
+
+Regularan zahtjev:
+
+fetch("/api/honeypot/demo/search?term=test", {
+    method: "GET",
+    headers: {
+        "Accept": "application/json",
+        "Authorization": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICI1Y3BWdnZRdVl3VGJqS1ZmaVNTSzZmeXg3MG1NLVlKdkMwcGdySVhfWUFJIn0.eyJleHAiOjE3OTM5NzMzOTIsImlhdCI6MTc5Mzk3MzA5MiwiYXV0aF90aW1lIjoxNzkzOTczMDkwLCJqdGkiOiJvbnJ0YWM6YTYxYjU0N2UtZjYxNC0xMDRmLTcyMWYtZDVhMzBiMDY5MDAzIiwiaXNzIjoiaHR0cDovL2xvY2FsaG9zdDo4MDgwL3JlYWxtcy9zZWN1cmUtdmF1bHQiLCJhdWQiOiJhY2NvdW50Iiwic3ViIjoiNTE3ZTNhMjAtOWY1Yi00YTI4LTg4ZDktNTIwOThmMDYwMDRkIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoic2VjdXJlLXZhdWx0LWZyb250ZW5kIiwic2lkIjoiak9vczRaQzdIRFh6cUdjUmpWdHRDbHV0IiwiYWNyIjoiMSIsImFsbG93ZWQtb3JpZ2lucyI6WyJodHRwOi8vbG9jYWxob3N0OjUxNzMiXSwicmVhbG1fYWNjZXNzIjp7InJvbGVzIjpbIm9mZmxpbmVfYWNjZXNzIiwidW1hX2F1dGhvcml6YXRpb24iLCJkZWZhdWx0LXJvbGVzLXNlY3VyZS12YXVsdCJdfSwicmVzb3VyY2VfYWNjZXNzIjp7ImFjY291bnQiOnsicm9sZXMiOlsibWFuYWdlLWFjY291bnQiLCJtYW5hZ2UtYWNjb3VudC1saW5rcyIsInZpZXctcHJvZmlsZSJdfX0sInNjb3BlIjoib3BlbmlkIGVtYWlsIHByb2ZpbGUiLCJlbWFpbF92ZXJpZmllZCI6ZmFsc2UsIm5hbWUiOiJNaWxhbiBNaWxhbmljIiwicHJlZmVycmVkX3VzZXJuYW1lIjoibWlsYW4iLCJnaXZlbl9uYW1lIjoiTWlsYW4iLCJmYW1pbHlfbmFtZSI6Ik1pbGFuaWMiLCJlbWFpbCI6Im1pbGFuQG1haWwuY29tIn0.euUg6M9KJh3ViygN2E9t6iSkORcR_ZBYRKXNx0otYOlZSDcVnoOCX4xDlQ_yzHb1EFt5XVHEcpv-WWpOoR8D1wqudNRaBw7GEVzSsJJAUyuUI0K-srss80BiTCl6MDBwOpxfgxt-A6gt7nHl2w4Cy-6U5RFvHyD14PcbSYbM_e0LHg12XE4Z9DC-CWoIe-cRvkwoUrwL7A9_DTsUotsQdbZpx3tw5vnUfp_qMRaOVsTyFb8KhBcIsfoav-FvSyx2IXvFJxvp9cshnjYq8cJxcg4b5rANm9Lx-5cTLULgrGHEM1Mn7o7nmSWJvM63X9KrRcRTXZWk6QE-Wyz9hJxNkw"
+    }
+})
+.then(async response => {
+    console.log("HTTP status:", response.status);
+    console.log("Response:", await response.text());
+})
+.catch(error => console.error("Greška:", error));
+
+
+
+SQL injection zahtjev:
+
+const payload = "' OR '1'='1' -- ";
+
+fetch("/api/honeypot/demo/search?term=" + encodeURIComponent(payload), {
+    method: "GET",
+    headers: {
+        "Accept": "application/json",
+        "Authorization": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICI1Y3BWdnZRdVl3VGJqS1ZmaVNTSzZmeXg3MG1NLVlKdkMwcGdySVhfWUFJIn0.eyJleHAiOjE3OTM5NzI5MDYsImlhdCI6MTc5Mzk3MjYwNiwiYXV0aF90aW1lIjoxNzkzOTcyNTQ5LCJqdGkiOiJvbnJ0YWM6OTk0NjgyYzQtNzIwOS1kYWVkLWJmZjEtYmIzMTE4ZmMzYjQ1IiwiaXNzIjoiaHR0cDovL2xvY2FsaG9zdDo4MDgwL3JlYWxtcy9zZWN1cmUtdmF1bHQiLCJhdWQiOiJhY2NvdW50Iiwic3ViIjoiMjAzZTZhMjEtZTZmOC00YjdlLTliNTEtZTdjMTVkMjc5ZGMwIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoic2VjdXJlLXZhdWx0LWZyb250ZW5kIiwic2lkIjoiUjVza1FHUFoycGo2ODE2RXRQSGE0c1Q4IiwiYWNyIjoiMCIsImFsbG93ZWQtb3JpZ2lucyI6WyJodHRwOi8vbG9jYWxob3N0OjUxNzMiXSwicmVhbG1fYWNjZXNzIjp7InJvbGVzIjpbIm9mZmxpbmVfYWNjZXNzIiwidW1hX2F1dGhvcml6YXRpb24iLCJkZWZhdWx0LXJvbGVzLXNlY3VyZS12YXVsdCJdfSwicmVzb3VyY2VfYWNjZXNzIjp7ImFjY291bnQiOnsicm9sZXMiOlsibWFuYWdlLWFjY291bnQiLCJtYW5hZ2UtYWNjb3VudC1saW5rcyIsInZpZXctcHJvZmlsZSJdfX0sInNjb3BlIjoib3BlbmlkIGVtYWlsIHByb2ZpbGUiLCJlbWFpbF92ZXJpZmllZCI6ZmFsc2UsIm5hbWUiOiJNaXRhciBNaXRyb3ZpYyIsInByZWZlcnJlZF91c2VybmFtZSI6Im1pdGFyIiwiZ2l2ZW5fbmFtZSI6Ik1pdGFyIiwiZmFtaWx5X25hbWUiOiJNaXRyb3ZpYyIsImVtYWlsIjoibWl0YXJAbWFpbC5jb20ifQ.fkQs3j8U8ipIq68MUq8Qfkh8QuJejNTBtaP9MoBB_SuwDzx1RlK0OwKHEgDMSti6Kdis8QdyZb6icnC1rmOeEfLg1fei7q07ramLW-9gt2En07NeiA4k7q7us7Y2R3EA4hEJ5s31Z5Q4D_XPeJrzpeUbseeZvOqwT8tfbtGzLKmHSpPC49Ci5pgglh3-Y2CySftTpTOIrr-lTJGhWu_r8PelKpY3w4aDNmBimdWHTnpHjb3ToIWg-3LExfKkhU0xnLI5MIvDmJ5gPHyWrDIcH6iAJPAJ-MJBgI9HL6sw3AI-Et4Am_y0tifxSmb4gD2pjXZQHakT-z8eRSAerMEmHQ"
+    }
+})
+.then(async response => {
+    console.log("HTTP status:", response.status);
+    console.log("Response:", await response.text());
+})
+.catch(error => console.error("Greška:", error));
+
+
+
+Testiranje gateway-a:
+1) za previse puta pogresan unos master lozinke master lozinka na network tab filtrirati decryption-failure i 6 puta pogresnu unjeti (obrisati u redisu poslije svakog testa block i decryption-failures)
+2) za sumnjive korisnicke unose u network console: const probe = encodeURIComponent("' OR '1'='1");
+
+for (let i = 1; i <= 3; i++) {
+  const response = await fetch(
+    `/api/users?search=${probe}`,
+    {
+      credentials: 'include',
+      cache: 'no-store'
+    }
+  );
+
+  console.log(
+    `Pokušaj ${i}:`,
+    response.status,
+    response.headers.get('X-SecureVault-Block-Reason')
+  );
+}
+
+nakon toga normalan zahtjev: const r = await fetch('/api/users', {
+  credentials: 'include'
+});
+
+console.log(r.status);
+console.log(r.headers.get('X-SecureVault-Block-Reason'));
+3) za izmisljeni session cookie u powershell: 1..11 | ForEach-Object {
+  curl.exe -s -o NUL -w "%{http_code}`n" `
+    -H "Cookie: __Host-SVSESSION=not-a-real-session" `
+    "http://127.0.0.1:8000/api/users"
+}
+4*) ima i na login brute force zastita ako previse puta pogresnu sifru aktivira se na minut, pa se inkrementuje do 5min, ali je to u keycloaku podeseno

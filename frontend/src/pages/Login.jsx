@@ -20,7 +20,7 @@ export default function Login() {
       await signIn()
     } catch (err) {
       console.error('Login failed:', err)
-      setError('Prijava nije uspjela. Provjeri da li je Keycloak dostupan.')
+      setError('Prijava nije uspjela. Provjeri da li su Gateway i Keycloak dostupni.')
       setLoading(false)
     }
   }
@@ -30,7 +30,7 @@ export default function Login() {
       <section className="login-card">
         <h1>Prijava u Secure Vault</h1>
 
-        <p>Prijavi se preko sigurnog Keycloak sistema.</p>
+        <p>Prijavi se putem sigurnog OIDC sistema. Možeš koristiti i povezani eksterni nalog ako je podešen u Keycloak-u.</p>
 
         {sessionExpired && (
           <p role="alert" className="login-info">

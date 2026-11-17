@@ -9,6 +9,7 @@ import {
 
 import { useAuth } from './AuthContext.jsx'
 import { getMyKeys } from '../services/usersApi.js'
+import { reportDecryptionFailure } from '../services/api.js'
 
 import {
   deriveKek,
@@ -236,7 +237,9 @@ export function VaultProvider({ children }) {
           },
         )
       } catch {
-        throw new Error('Pogrešna master lozinka.')
+        const error = new Error('Pogrešna master lozinka.')
+        error.code = 'DECRYPTION_FAILED'
+        throw error
       }
 
       let importedPrivateKey
@@ -264,6 +267,10 @@ export function VaultProvider({ children }) {
 
       return true
     } catch (err) {
+      if (err?.code === 'DECRYPTION_FAILED') {
+        // Fire-and-forget: the report contains no password, key or plaintext.
+        reportDecryptionFailure()
+      }
       if (requestId === statusRequestId.current) {
         clearUnlockedMaterial()
         setStatus('locked')
@@ -325,17 +332,22 @@ export function VaultProvider({ children }) {
         throw new Error('Trezor nije otključan.')
       }
 
-      const dek = await unwrapDek(kek, {
-        iv: base64ToBytes(dekIv),
-        ciphertext: base64ToBytes(encryptedDek),
-      })
+      try {
+        const dek = await unwrapDek(kek, {
+          iv: base64ToBytes(dekIv),
+          ciphertext: base64ToBytes(encryptedDek),
+        })
 
-      const plaintext = await decryptBytes(dek, {
-        iv: base64ToBytes(contentIv),
-        ciphertext: base64ToBytes(encryptedValue),
-      })
+        const plaintext = await decryptBytes(dek, {
+          iv: base64ToBytes(contentIv),
+          ciphertext: base64ToBytes(encryptedValue),
+        })
 
-      return new TextDecoder().decode(plaintext)
+        return new TextDecoder().decode(plaintext)
+      } catch (error) {
+        reportDecryptionFailure()
+        throw error
+      }
     },
     [kek, unlocked],
   )
@@ -430,17 +442,22 @@ export function VaultProvider({ children }) {
         throw new Error('Trezor nije otključan.')
       }
 
-      const dek = await cryptoUnwrapDekForRecipient(
-        privateKey,
-        base64ToBytes(recipientEncryptedDek),
-      )
+      try {
+        const dek = await cryptoUnwrapDekForRecipient(
+          privateKey,
+          base64ToBytes(recipientEncryptedDek),
+        )
 
-      const plaintext = await decryptBytes(dek, {
-        iv: base64ToBytes(contentIv),
-        ciphertext: base64ToBytes(encryptedValue),
-      })
+        const plaintext = await decryptBytes(dek, {
+          iv: base64ToBytes(contentIv),
+          ciphertext: base64ToBytes(encryptedValue),
+        })
 
-      return new TextDecoder().decode(plaintext)
+        return new TextDecoder().decode(plaintext)
+      } catch (error) {
+        reportDecryptionFailure()
+        throw error
+      }
     },
     [privateKey, unlocked],
   )

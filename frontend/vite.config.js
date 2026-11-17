@@ -1,19 +1,17 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// https://vite.dev/config/
+const gateway = 'http://localhost:8000'
+
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5173,
-    // Forward API calls to the Spring Cloud Gateway during local development.
-    // No concrete API endpoints are defined yet; this only wires the prefix so
-    // future client code can call same-origin "/api/..." without CORS issues.
     proxy: {
-      '/api': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
+      '/api': { target: gateway, changeOrigin: false, secure: false },
+      '/auth': { target: gateway, changeOrigin: false, secure: false },
+      '/oauth2': { target: gateway, changeOrigin: false, secure: false },
+      '/login/oauth2': { target: gateway, changeOrigin: false, secure: false },
+      '/logout': { target: gateway, changeOrigin: false, secure: false },
     },
   },
 })

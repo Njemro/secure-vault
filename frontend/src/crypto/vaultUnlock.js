@@ -63,8 +63,12 @@ export async function unlockVaultWithPassword(masterPassword, keyRecord) {
 
     return privateKey
   } catch {
-    throw new Error(
+    const error = new Error(
       'Otključavanje nije uspjelo. Provjeri master lozinku ili integritet podataka.',
     )
+    // A stable machine-readable code is used by VaultContext to report only
+    // the fact of a failed client-side decryption; no password/key is sent.
+    error.code = 'DECRYPTION_FAILED'
+    throw error
   }
 }

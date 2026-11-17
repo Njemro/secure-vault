@@ -7,19 +7,24 @@ import unibl.sni.securevault.exception.InvalidOperationRequestException;
 import unibl.sni.securevault.exception.ResourceNotFoundException;
 import unibl.sni.securevault.repository.HoneypotSecretRepository;
 
+import unibl.sni.securevault.entity.User;
+
+import java.security.SecureRandom;
+import java.util.Base64;
+
 import java.util.List;
 import java.util.UUID;
 
 /**
- * Internal persistence and lookup for honeypot (decoy) records only.
- * Honeypots live in their own table and repository, so they can never appear
- * in ordinary secret queries; detection and response logic is a later task
- * (AGENTS.md section 13).
+ * Internal persistence and lookup for honeypot (decoy) records.
+ * Honeypots are stored separately from ordinary secrets.
+ * This service also provisions a decoy record for each user.
  */
 @Service
 public class HoneypotSecretService {
 
     private final HoneypotSecretRepository honeypotSecretRepository;
+    private final SecureRandom secureRandom = new SecureRandom();
 
     public HoneypotSecretService(HoneypotSecretRepository honeypotSecretRepository) {
         this.honeypotSecretRepository = honeypotSecretRepository;
@@ -57,5 +62,42 @@ public class HoneypotSecretService {
     @Transactional(readOnly = true)
     public List<HoneypotSecret> findAll() {
         return honeypotSecretRepository.findAll();
+    }
+
+
+    @Transactional
+    public void ensureHoneypotExists(User user) {
+        if (user == null || user.getId() == null) {
+            throw new InvalidOperationRequestException(
+                    "A valid user is required to create a honeypot.");
+        }
+    
+        if (honeypotSecretRepository.existsByOwnerId(user.getId())) {
+            return;
+        }
+    
+        byte[] decoyContent = new byte[128];
+        secureRandom.nextBytes(decoyContent);
+    
+        String decoyName = "backup-credentials-" + UUID.randomUUID();
+    
+        String metadata = Base64.getEncoder()
+                .encodeToString(randomBytes(24));
+    
+        HoneypotSecret honeypot = new HoneypotSecret(
+                user,
+                decoyName,
+                decoyContent,
+                null,
+                metadata
+        );
+    
+        honeypotSecretRepository.save(honeypot);
+    }
+
+    private byte[] randomBytes(int size) {
+        byte[] bytes = new byte[size];
+        secureRandom.nextBytes(bytes);
+        return bytes;
     }
 }

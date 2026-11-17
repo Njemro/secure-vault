@@ -10,7 +10,7 @@ import {
 
 import Login from './pages/Login'
 import Register from './pages/Register'
-import SetupKeys from './pages/setupKeys'
+import SetupKeys from './pages/SetupKeys.jsx'
 import UnlockVault from './pages/UnlockVault'
 import Dashboard from './pages/Dashboard'
 import MySecrets from './pages/MySecrets'
@@ -21,13 +21,16 @@ import EditSecret from './pages/EditSecret.jsx'
 import SecretDetail from './pages/SecretDetail.jsx'
 import AdminSecurityPolicies from './pages/AdminSecurityPolicies.jsx'
 import AdminUsers from './pages/AdminUsers.jsx'
+import AdminSecurityIncidents from './pages/AdminSecurityIncidents.jsx'
 
 function RequireAuth({ children }) {
-  const { authenticated } = useAuth()
+  const { authenticated, initializing } = useAuth()
 
-  return authenticated
-    ? children
-    : <Navigate to="/login" replace />
+  if (initializing) {
+    return <main className="unlock-vault-page"><section className="unlock-vault-card"><p>Provjeravam sesiju...</p></section></main>
+  }
+
+  return authenticated ? children : <Navigate to="/login" replace />
 }
 
 export default function App() {
@@ -87,7 +90,11 @@ export default function App() {
             <AdminUsers />
           </RequireAdmin>
         } />
-
+        <Route path="/admin/security-incidents" element={
+          <RequireAdmin>
+            <AdminSecurityIncidents />
+          </RequireAdmin>
+        } />
       </Route>
 
       <Route path="*" element={<NotFound />} />

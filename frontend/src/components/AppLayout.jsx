@@ -93,6 +93,21 @@ async function handleLogout() {
             </NavLink>
     )}
 
+          {isAdmin && (
+            <NavLink
+              to="/admin/security-incidents"
+              end
+              className={({ isActive }) =>
+                isActive
+                  ? 'app-nav__link app-nav__link--active'
+                  : 'app-nav__link'
+              }
+              onClick={() => setMenuOpen(false)}
+            >
+              Security Incidents
+            </NavLink>
+          )}
+
           <button
             type="button"
             className="app-nav__link app-nav__logout"

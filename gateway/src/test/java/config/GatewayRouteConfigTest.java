@@ -53,10 +53,11 @@ class GatewayRouteConfigTest {
     private Route apiRoute() {
         List<Route> routes = routeLocator.getRoutes().collectList().block();
         assertThat(routes).isNotNull();
-        assertThat(routes).hasSize(1);
-        Route route = routes.get(0);
-        assertThat(route.getId()).isEqualTo("api-backend");
-        return route;
+        assertThat(routes).hasSize(2);
+        return routes.stream()
+                .filter(candidate -> candidate.getId().equals("api-backend"))
+                .findFirst()
+                .orElseThrow();
     }
 
     @Test
@@ -82,22 +83,41 @@ class GatewayRouteConfigTest {
     }
 
     @Test
-    void apiRouteAppliesOnlyTheRequestRateLimiterFilter() {
+    void apiRouteAppliesRateLimiterAndTokenRelay() {
         Route route = apiRoute();
-        assertThat(route.getFilters()).hasSize(1);
-        assertThat(delegateOf(route.getFilters().get(0)).getClass().getName())
-                .contains("RequestRateLimiterGatewayFilterFactory");
+        assertThat(route.getFilters()).hasSize(2);
+        assertThat(route.getFilters().stream().map(GatewayRouteConfigTest::delegateOf)
+                .map(filter -> filter.getClass().getName()).toList())
+                .anyMatch(name -> name.contains("RequestRateLimiterGatewayFilterFactory"))
+                .anyMatch(name -> name.contains("TokenRelayGatewayFilterFactory"));
     }
 
     @Test
     void apiPrefixIsPreservedWhenForwarding() {
         Route route = apiRoute();
-        // The only filter is the rate limiter; no StripPrefix / RewritePath filter
-        // rewrites the path, so the /api prefix is forwarded unchanged.
-        assertThat(route.getFilters()).hasSize(1);
-        assertThat(delegateOf(route.getFilters().get(0)).getClass().getName())
-                .doesNotContain("StripPrefix")
-                .doesNotContain("RewritePath");
+        // The route applies rate limiting and TokenRelay only; no StripPrefix / RewritePath
+        // filter rewrites the path, so the /api prefix is forwarded unchanged.
+        assertThat(route.getFilters()).hasSize(2);
+        assertThat(route.getFilters().stream().map(GatewayRouteConfigTest::delegateOf)
+                .map(filter -> filter.getClass().getName()).toList())
+                .noneMatch(name -> name.contains("StripPrefix") || name.contains("RewritePath"));
+    }
+
+
+    @Test
+    void publicRegistrationHasItsOwnRouteWithoutTokenRelay() {
+        List<Route> routes = routeLocator.getRoutes().collectList().block();
+        assertThat(routes).isNotNull();
+        Route registration = routes.stream()
+                .filter(candidate -> candidate.getId().equals("api-registration"))
+                .findFirst()
+                .orElseThrow();
+        ServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.post("/api/auth/register").build());
+        assertThat(Mono.from(registration.getPredicate().apply(exchange)).block()).isTrue();
+        assertThat(registration.getFilters()).hasSize(1);
+        assertThat(delegateOf(registration.getFilters().get(0)).getClass().getName())
+                .contains("RequestRateLimiterGatewayFilterFactory");
     }
 
     @Test

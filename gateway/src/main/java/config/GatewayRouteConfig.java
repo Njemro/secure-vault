@@ -9,24 +9,18 @@ import org.springframework.context.annotation.Configuration;
 /**
  * Route configuration for the Secure Vault API Gateway.
  *
- * <p>The gateway is a thin edge proxy: it forwards {@code /api/**} to the
- * backend and adds no business logic. The {@code /api} prefix is preserved
- * when forwarding because the route intentionally applies no
- * {@code StripPrefix}/{@code RewritePath} filter - the backend serves its API
- * under {@code /api}.
+ * <p>The gateway is the SPA edge/BFF: it forwards {@code /api/**} to the
+ * backend and keeps OAuth tokens server-side. The {@code /api} prefix is
+ * preserved because the backend serves its API under {@code /api}.
  *
- * <p>The route applies one gateway filter: the Redis-backed
- * {@code RequestRateLimiter}, keyed per client by
+ * <p>The protected API route applies Redis-backed request limiting keyed by
  * {@link RemoteAddressKeyResolver} (remote socket address, never
- * {@code X-Forwarded-For}). Limits are configured under
- * {@code spring.cloud.gateway.server.webflux.redis-rate-limiter.config.api-backend}.
+ * {@code X-Forwarded-For}) and TokenRelay. Public registration has a separate,
+ * stricter rate-limit route and does not use TokenRelay.
  *
- * <p>Note that Keycloak login traffic does <b>not</b> pass through this
- * gateway, so this rate limiter does <b>not</b> protect login attempts.
- *
- * <p>Other security controls (JWT validation, cookies/BFF sessions, CORS
- * policy) are intentionally not configured here yet; they are added in later
- * tasks.
+ * <p>The gateway is also the OIDC BFF: TokenRelay obtains the access token
+ * from the server-side WebSession and forwards it to the resource server.
+ * The browser never receives OAuth access/refresh tokens.
  */
 @Configuration
 public class GatewayRouteConfig {
@@ -37,10 +31,17 @@ public class GatewayRouteConfig {
             @Value("${gateway.routes.api.uri:http://localhost:8081}") String backendUri,
             RemoteAddressKeyResolver remoteAddressKeyResolver) {
         return builder.routes()
-                .route("api-backend", r -> r
-                        .path("/api/**")
+                // Public registration is routed without TokenRelay.
+                .route("api-registration", r -> r
+                        .path("/api/auth/register")
                         .filters(f -> f.requestRateLimiter(
                                 cfg -> cfg.setKeyResolver(remoteAddressKeyResolver)))
+                        .uri(backendUri))
+                .route("api-backend", r -> r
+                        .path("/api/**")
+                        .filters(f -> f
+                                .requestRateLimiter(cfg -> cfg.setKeyResolver(remoteAddressKeyResolver))
+                                .tokenRelay())
                         .uri(backendUri))
                 .build();
     }

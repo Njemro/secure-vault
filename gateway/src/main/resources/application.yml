@@ -1,6 +1,6 @@
 spring:
   config:
-    import: "optional:file:../.env[.properties]"
+    import: "optional:file:./.env[.properties],optional:file:../.env[.properties]"
   application:
     name: secure-vault-gateway
 
@@ -28,12 +28,23 @@ spring:
                 replenish-rate: ${GATEWAY_RATE_LIMIT_REPLENISH_RATE:10}
                 burst-capacity: ${GATEWAY_RATE_LIMIT_BURST_CAPACITY:20}
                 requested-tokens: ${GATEWAY_RATE_LIMIT_REQUESTED_TOKENS:1}
+              api-registration:
+                replenish-rate: ${GATEWAY_REGISTER_RATE_LIMIT_REPLENISH_RATE:1}
+                burst-capacity: ${GATEWAY_REGISTER_RATE_LIMIT_BURST_CAPACITY:5}
+                requested-tokens: 1
 
 server:
   # Edge entry point on 8000 (Keycloak owns 8080). The backend stays on 8081.
   port: 8000
+  forward-headers-strategy: none
 
 gateway:
+  oidc:
+    issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/secure-vault}
+    authorization-uri: ${KEYCLOAK_AUTHORIZATION_URI:http://localhost:8080/realms/secure-vault/protocol/openid-connect/auth}
+    token-uri: ${KEYCLOAK_TOKEN_URI:http://localhost:8080/realms/secure-vault/protocol/openid-connect/token}
+    jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8080/realms/secure-vault/protocol/openid-connect/certs}
+    user-info-uri: ${KEYCLOAK_USER_INFO_URI:http://localhost:8080/realms/secure-vault/protocol/openid-connect/userinfo}
   routes:
     api:
       # Backend base URL that /api/** is forwarded to.

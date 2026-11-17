@@ -1,8 +1,7 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import './Register.css'
 import { register } from '../services/api'
-import keycloak from '../auth/keycloak'
 
 export default function Register() {
   const [form, setForm] = useState({
@@ -74,11 +73,9 @@ export default function Register() {
         confirmPassword: '',
       }))
 
-      // Keycloak obavlja prijavu i eventualno podešavanje TOTP-a.
-      await keycloak.login({
-        loginHint: username.trim(),
-        redirectUri: `${window.location.origin}/setup-keys`,
-      })
+      // OIDC login now runs through the Gateway BFF. Access/refresh tokens
+      // are never exposed to this SPA.
+      window.location.assign('/oauth2/authorization/keycloak')
     } catch (err) {
       console.error('Registration or login failed:', err)
 
