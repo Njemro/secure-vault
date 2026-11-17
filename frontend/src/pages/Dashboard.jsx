@@ -87,12 +87,6 @@ export default function Dashboard() {
           <p className="card__metric">{stats.shared}</p>
           <p className="card__hint">Active shares</p>
         </div>
-
-        {/* <div className="card">
-          <h2 className="card__title">Security score</h2>
-          <p className="card__metric">Good</p>
-          <p className="card__hint">No issues detected</p>
-        </div> */}
       </div>
     </section>
   )
