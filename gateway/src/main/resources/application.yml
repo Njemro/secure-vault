@@ -12,6 +12,8 @@ spring:
       # Override per environment via GATEWAY_REDIS_HOST / GATEWAY_REDIS_PORT.
       host: ${GATEWAY_REDIS_HOST:localhost}
       port: ${GATEWAY_REDIS_PORT:6379}
+      ssl:
+        enabled: true
 
   cloud:
     gateway:
@@ -34,9 +36,14 @@ spring:
                 requested-tokens: 1
 
 server:
-  # Edge entry point on 8000 (Keycloak owns 8080). The backend stays on 8081.
   port: 8000
   forward-headers-strategy: none
+  ssl:
+    enabled: true
+    key-store: file:../certs/localhost.p12
+    key-store-type: PKCS12
+    key-store-password: ${GATEWAY_SSL_PASSWORD}
+    key-alias: localhost
 
 gateway:
   oidc:

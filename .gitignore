@@ -75,3 +75,5 @@ temp/
 *.tmp
 *.swp
 *.swo
+
+localhost-key.pem

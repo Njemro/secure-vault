@@ -9,7 +9,7 @@ spring:
     # Spring Boot does not read .env automatically (see README / task notes).
     # Automated tests override all datasource keys with in-memory H2 via the
     # "test" profile (src/test/resources/application-test.yml).
-    url: jdbc:mysql://localhost:3307/${MYSQL_DATABASE}
+    url: jdbc:mysql://localhost:3307/${MYSQL_DATABASE}?sslMode=VERIFY_IDENTITY
     username: ${MYSQL_USER}
     password: ${MYSQL_PASSWORD}
   jpa:
@@ -40,3 +40,9 @@ server:
   # the resource server directly. Override only for a private container network.
   address: 127.0.0.1
   port: 8081
+  ssl:
+    enabled: true
+    key-store: file:../certs/localhost.p12
+    key-store-type: PKCS12
+    key-store-password: ${BACKEND_SSL_PASSWORD}
+    key-alias: localhost
